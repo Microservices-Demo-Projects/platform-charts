@@ -35,7 +35,10 @@ roleRef:
 # Grants the smoke-test Job permission to `kubectl exec` into the vault-0 pod
 # in the vault namespace, so it can write/read/delete a throwaway Vault KV
 # entry using the vault CLI already present in that pod (same approach used
-# manually in manual/README.md).
+# manually in manual/README.md). It also needs to read the operator-managed
+# vault-unseal-keys Secret to get a root token - the vault-0 container has no
+# VAULT_TOKEN env var set, and there's no service account/JWT auth method
+# configured for this exec-based approach.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -48,6 +51,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["vault-unseal-keys"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -101,13 +108,20 @@ spec:
                 # namespaces (not watch/list), so a waiting delete hangs forever
                 # trying to observe termination.
                 kubectl delete namespace "$NS" --ignore-not-found --wait=false
-                kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- vault kv delete "$KV_PATH" || true
+                kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- env VAULT_SKIP_VERIFY=true VAULT_TOKEN="$VAULT_TOKEN" vault kv delete "$KV_PATH" || true
               }
 
               kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
+              # The vault-0 container has no VAULT_TOKEN env var set, so fetch
+              # the operator-generated root token to authenticate the CLI.
+              VAULT_TOKEN=$(kubectl get secret vault-unseal-keys -n "$VAULT_NS" -o jsonpath='{.data.vault-root}' | base64 -d)
+
               # 1. Write a throwaway secret into Vault's KV engine
-              kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- vault kv put "$KV_PATH" value="$EXPECTED"
+              # VAULT_SKIP_VERIFY: vault's default VAULT_ADDR is 127.0.0.1:8200,
+              # whose cert SAN doesn't include a bare IP match for verification
+              # inside exec; the manual README uses the same flag.
+              kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- env VAULT_SKIP_VERIFY=true VAULT_TOKEN="$VAULT_TOKEN" vault kv put "$KV_PATH" value="$EXPECTED"
 
               # 2. Create an ExternalSecret referencing it via the local-vault-backend ClusterSecretStore
               cat <<EOF | kubectl apply -f -
