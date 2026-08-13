@@ -9,13 +9,13 @@ spec:
   project: platform
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: HEAD
+      targetRevision: feature/argocd-gitops-bootstrap
       path: cert-manager/chart
       helm:
         valueFiles:
           - $values/kubernetes.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: HEAD
+      targetRevision: feature/argocd-gitops-bootstrap
       ref: values
       path: cert-manager/values
   destination:

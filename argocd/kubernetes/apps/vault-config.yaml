@@ -15,10 +15,10 @@ spec:
   project: platform
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: HEAD
+      targetRevision: feature/argocd-gitops-bootstrap
       path: hashicorp-vault/config/kubernetes
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: HEAD
+      targetRevision: feature/argocd-gitops-bootstrap
       path: hashicorp-vault/tests/base
   destination:
     server: https://kubernetes.default.svc

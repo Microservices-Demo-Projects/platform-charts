@@ -10,7 +10,7 @@ spec:
   project: platform
   source:
     repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-    targetRevision: HEAD
+    targetRevision: feature/argocd-gitops-bootstrap
     path: argocd/kubernetes/apps
     directory:
       recurse: false

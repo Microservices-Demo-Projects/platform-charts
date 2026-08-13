@@ -12,13 +12,13 @@ spec:
   project: platform
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: HEAD
+      targetRevision: feature/argocd-gitops-bootstrap
       path: hashicorp-vault/chart
       helm:
         valueFiles:
           - $values/kubernetes.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: HEAD
+      targetRevision: feature/argocd-gitops-bootstrap
       ref: values
       path: hashicorp-vault/values
   destination:
