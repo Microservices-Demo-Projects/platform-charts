@@ -22,6 +22,36 @@ roleRef:
   name: system:auth-delegator
   apiGroup: rbac.authorization.k8s.io
 ---
+# Vault itself (via the bank-vaults sidecar) reads and writes the
+# vault-unseal-keys/vault-root Secrets in this namespace directly through
+# the Kubernetes API - that's what makes unsealConfig.kubernetes fully
+# automatic. The vault-operator's own ClusterRole only covers what the
+# *operator* needs; the Vault pod's own ServiceAccount needs this
+# separately.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault
+  namespace: vault
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault
+  namespace: vault
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: vault
+roleRef:
+  kind: Role
+  name: vault
+  apiGroup: rbac.authorization.k8s.io
+---
 # The Vault custom resource. The bank-vaults vault-operator (deployed by
 # chart/ at sync-wave 30) watches for this and reconciles it into a
 # StatefulSet, Services, TLS wiring, and - critically - fully automated
