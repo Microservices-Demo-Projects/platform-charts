@@ -7,6 +7,14 @@ cert-manager:
   podDisruptionBudget:
     enabled: true
 
+  # The chart defaults the leader-election Lease to kube-system, which the
+  # ArgoCD AppProject doesn't (and shouldn't) permit writing to. Keep it
+  # inside this component's own namespace instead. This lives under `global`,
+  # not top-level - the schema only accepts it there.
+  global:
+    leaderElection:
+      namespace: cert-manager
+
   webhook:
     replicaCount: 2
     podDisruptionBudget:
