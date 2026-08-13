@@ -48,6 +48,8 @@ spec:
       kind: ClusterIssuer
     - group: apiregistration.k8s.io
       kind: APIService
+    - group: external-secrets.io
+      kind: ClusterSecretStore
 
   namespaceResourceWhitelist:
     - group: "*"
