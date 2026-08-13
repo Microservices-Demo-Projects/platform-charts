@@ -16,7 +16,7 @@ spec:
       path: hashicorp-vault/chart
       helm:
         valueFiles:
-          - $values/kubernetes.yaml
+          - $values/hashicorp-vault/values/kubernetes.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       ref: values
