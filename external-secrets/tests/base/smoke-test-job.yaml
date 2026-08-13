@@ -81,7 +81,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: smoke-test
-          image: registry.k8s.io/kubectl:v1.34.1
+          image: docker.io/alpine/k8s:1.34.9
           command:
             - /bin/sh
             - -c
