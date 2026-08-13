@@ -350,7 +350,7 @@ oc exec -ti vault-0 -n vault -- vault kv put kv/test-secret username=admin passw
 
 # 2. Create an ExternalSecret
 oc apply -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: test-secret

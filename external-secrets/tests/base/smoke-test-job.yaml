@@ -111,7 +111,7 @@ spec:
 
               # 2. Create an ExternalSecret referencing it via the local-vault-backend ClusterSecretStore
               cat <<EOF | kubectl apply -f -
-              apiVersion: external-secrets.io/v1beta1
+              apiVersion: external-secrets.io/v1
               kind: ExternalSecret
               metadata:
                 name: smoke-test
