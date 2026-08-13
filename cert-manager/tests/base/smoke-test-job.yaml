@@ -95,7 +95,10 @@ spec:
 
               if kubectl wait --for=condition=Ready certificate/example-cert -n test-certs --timeout=60s; then
                 echo "example-cert is Ready, cleaning up test-certs namespace"
-                kubectl delete namespace test-certs
+                # --wait=false: the ServiceAccount only has get/create/delete on
+                # namespaces (not watch/list), so a waiting delete hangs forever
+                # trying to observe termination.
+                kubectl delete namespace test-certs --wait=false
                 exit 0
               else
                 echo "example-cert did not become Ready in time; leaving test-certs namespace for debugging"

@@ -97,7 +97,10 @@ spec:
               cleanup_ok() {
                 echo "Cleaning up test resources"
                 kubectl delete externalsecret smoke-test -n "$NS" --ignore-not-found
-                kubectl delete namespace "$NS" --ignore-not-found
+                # --wait=false: the ServiceAccount only has get/create/delete on
+                # namespaces (not watch/list), so a waiting delete hangs forever
+                # trying to observe termination.
+                kubectl delete namespace "$NS" --ignore-not-found --wait=false
                 kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- vault kv delete "$KV_PATH" || true
               }
 
