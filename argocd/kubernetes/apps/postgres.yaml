@@ -1,0 +1,30 @@
+# The CNPG Cluster CR (3-instance HA), superuser PushSecret, and a PostSync
+# smoke test that requests a live database/creds/app-ro lease from Vault -
+# the first point anything actually exercises Vault's database secrets
+# engine end-to-end.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "60"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      path: postgres/config/kubernetes
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      path: postgres/tests/base
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: postgres
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

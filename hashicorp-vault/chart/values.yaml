@@ -1,0 +1,43 @@
+# Default values for hashicorp-vault-operator.
+# This is a wrapper chart, so we primarily configure the subchart 'vault-operator'
+# (the bank-vaults community operator, Apache-2.0, NOT HashiCorp-official).
+#
+# This chart only deploys the *operator* - the Deployment that watches for
+# `Vault` custom resources. It does not deploy Vault itself. The actual Vault
+# server is declared as a `Vault` CR under config/base/vault.yaml (sync-wave
+# 40), which the operator (deployed by this chart at sync-wave 30) picks up
+# and reconciles into a StatefulSet, TLS wiring, and init/unseal handling.
+#
+# See manual/README.md for the old, hand-run `hashicorp/vault` chart path.
+
+vault-operator:
+  replicaCount: 1
+
+  # CRDs (the `Vault` CRD) are installed by this chart by default.
+  crds:
+    install: true
+
+  image:
+    repository: ghcr.io/bank-vaults/vault-operator
+    pullPolicy: IfNotPresent
+
+  # Bank-Vaults sidecar image used by the operator for init/unseal/config
+  # reconciliation of the Vault CR (distinct from spec.bankVaultsImage set on
+  # individual Vault CRs, which defaults to this same image if unset).
+  bankVaults:
+    image:
+      repository: ghcr.io/bank-vaults/bank-vaults
+      tag: "v1.33.1"
+
+  # Watch every namespace by default so a single operator instance can manage
+  # the `vault` namespace (and any future Vault CRs elsewhere). Narrow this to
+  # "vault" if you want a namespace-scoped operator instead.
+  watchNamespace: ""
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi

@@ -26,8 +26,14 @@ The following diagram shows how the components interact to create a secure, auto
 You can deploy the platform components in this repository using two different methods:
 
 ### Option 1: Automated Deployment (via ArgoCD)
-The repository is structured to support fully automated GitOps workflows. You can deploy the entire platform stack simultaneously by pointing ArgoCD to the centralized configurations located in the `/argocd` folder. 
-- *For a step-by-step guide on setting up automated synchronization and dependencies, please refer to the [ArgoCD Setup Guide](./argocd/README.md).*
+The repository is structured to support fully automated GitOps workflows, currently implemented for **Kubernetes** (OpenShift overlays are planned as siblings, not yet added). Point ArgoCD at this repo and the entire landing zone (cert-manager → Vault → External Secrets/CloudNativePG/Reloader/Headlamp → Vault config → ClusterSecretStore → Postgres) comes up in order with no manual intervention:
+
+```bash
+kubectl apply -f argocd/kubernetes/bootstrap/appproject.yaml
+kubectl apply -f argocd/kubernetes/bootstrap/root-app.yaml
+```
+
+- *For the full sync-wave breakdown and what each Application does, see the [ArgoCD Setup Guide](./argocd/README.md).*
 
 ### Option 2: Manual Installation (Component-by-Component)
 If you prefer to install, test, or troubleshoot components individually without using ArgoCD, you can deploy them manually using standard CLI tools.

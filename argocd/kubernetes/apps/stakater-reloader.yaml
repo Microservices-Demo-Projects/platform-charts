@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: stakater-reloader
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      path: stakater-reloader/chart
+      helm:
+        valueFiles:
+          - $values/kubernetes.yaml
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      ref: values
+      path: stakater-reloader/values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: stakater-reloader
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

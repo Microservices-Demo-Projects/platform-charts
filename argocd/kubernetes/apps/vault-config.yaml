@@ -1,0 +1,32 @@
+# The Vault CR itself (raft HA, auto-init/unseal, kv-v2 + database secrets
+# engines, kubernetes auth) plus a PostSync smoke test, and the custom
+# argocd-cm health check for vault.banzaicloud.com/Vault (ArgoCD has no
+# built-in health check for this CRD, so without this the Application would
+# report Healthy the instant the CR is created, before Vault is actually
+# initialized/unsealed - which would let wave 50/60 start too early).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      path: hashicorp-vault/config/kubernetes
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      path: hashicorp-vault/tests/base
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

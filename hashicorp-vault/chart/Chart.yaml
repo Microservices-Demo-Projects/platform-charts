@@ -1,0 +1,10 @@
+apiVersion: v2
+name: hashicorp-vault-operator
+description: A wrapper Helm chart for the bank-vaults Vault Operator, which manages a `Vault` custom resource for automated Vault init/unseal/config
+type: application
+version: 0.1.0
+appVersion: "1.24.0"
+dependencies:
+  - name: vault-operator
+    version: 1.24.0
+    repository: oci://ghcr.io/bank-vaults/helm-charts

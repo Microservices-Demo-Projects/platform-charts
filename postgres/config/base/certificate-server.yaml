@@ -1,0 +1,39 @@
+# Server TLS certificate for the CNPG "postgres" Cluster.
+#
+# cert-manager issues this off the shared `demo-ca` ClusterIssuer (see
+# cert-manager/config/base/root-ca.yaml), so the resulting secret contains
+# tls.crt/tls.key (the server keypair) AND ca.crt (the demo root CA bundle).
+# That lets the very same secret be referenced as BOTH
+# spec.certificates.serverTLSSecret and spec.certificates.serverCASecret on
+# the Cluster CR (see cluster.yaml) -- a pattern explicitly supported by CNPG
+# when serverCASecret's ca.key is omitted and serverTLSSecret is provided.
+#
+# DNS names cover all three services CNPG creates for the "postgres" Cluster
+# (see https://cloudnative-pg.io/documentation -- Service section):
+#   postgres-rw  (primary, read/write)
+#   postgres-ro  (replicas, read-only)
+#   postgres-r   (any instance, read)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: postgres-server-tls
+  namespace: postgres
+spec:
+  secretName: postgres-server-tls
+  commonName: postgres-rw
+  dnsNames:
+    - postgres-rw
+    - postgres-rw.postgres
+    - postgres-rw.postgres.svc
+    - postgres-rw.postgres.svc.cluster.local
+    - postgres-ro
+    - postgres-ro.postgres
+    - postgres-ro.postgres.svc
+    - postgres-ro.postgres.svc.cluster.local
+    - postgres-r
+    - postgres-r.postgres
+    - postgres-r.postgres.svc
+    - postgres-r.postgres.svc.cluster.local
+  issuerRef:
+    name: demo-ca
+    kind: ClusterIssuer

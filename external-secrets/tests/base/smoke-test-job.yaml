@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-secrets-smoke-test
+  namespace: external-secrets
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-secrets-smoke-test
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-secrets-smoke-test
+subjects:
+  - kind: ServiceAccount
+    name: external-secrets-smoke-test
+    namespace: external-secrets
+roleRef:
+  kind: ClusterRole
+  name: external-secrets-smoke-test
+  apiGroup: rbac.authorization.k8s.io
+---
+# Grants the smoke-test Job permission to `kubectl exec` into the vault-0 pod
+# in the vault namespace, so it can write/read/delete a throwaway Vault KV
+# entry using the vault CLI already present in that pod (same approach used
+# manually in manual/README.md).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: external-secrets-smoke-test-vault-exec
+  namespace: vault
+rules:
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: external-secrets-smoke-test-vault-exec
+  namespace: vault
+subjects:
+  - kind: ServiceAccount
+    name: external-secrets-smoke-test
+    namespace: external-secrets
+roleRef:
+  kind: Role
+  name: external-secrets-smoke-test-vault-exec
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: external-secrets-smoke-test
+  namespace: external-secrets
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: external-secrets-smoke-test
+    spec:
+      serviceAccountName: external-secrets-smoke-test
+      restartPolicy: Never
+      containers:
+        - name: smoke-test
+          image: registry.k8s.io/kubectl:v1.34.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+
+              NS=test-eso
+              VAULT_NS=vault
+              VAULT_POD=vault-0
+              KV_PATH=kv/eso-smoke-test
+              EXPECTED=smoke-test-ok
+
+              cleanup_ok() {
+                echo "Cleaning up test resources"
+                kubectl delete externalsecret smoke-test -n "$NS" --ignore-not-found
+                kubectl delete namespace "$NS" --ignore-not-found
+                kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- vault kv delete "$KV_PATH" || true
+              }
+
+              kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+
+              # 1. Write a throwaway secret into Vault's KV engine
+              kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- vault kv put "$KV_PATH" value="$EXPECTED"
+
+              # 2. Create an ExternalSecret referencing it via the local-vault-backend ClusterSecretStore
+              cat <<EOF | kubectl apply -f -
+              apiVersion: external-secrets.io/v1beta1
+              kind: ExternalSecret
+              metadata:
+                name: smoke-test
+                namespace: $NS
+              spec:
+                refreshInterval: 15s
+                secretStoreRef:
+                  name: local-vault-backend
+                  kind: ClusterSecretStore
+                target:
+                  name: smoke-test-secret
+                  creationPolicy: Owner
+                data:
+                - secretKey: value
+                  remoteRef:
+                    key: $KV_PATH
+                    property: value
+              EOF
+
+              # 3. Wait for the resulting Kubernetes Secret to appear with the expected value
+              ACTUAL=""
+              for i in $(seq 1 30); do
+                ACTUAL=$(kubectl get secret smoke-test-secret -n "$NS" \
+                  -o go-template='{{ index .data "value" | base64decode }}' 2>/dev/null || true)
+                if [ "$ACTUAL" = "$EXPECTED" ]; then
+                  break
+                fi
+                sleep 2
+              done
+
+              if [ "$ACTUAL" = "$EXPECTED" ]; then
+                echo "smoke-test-secret synced correctly from Vault via ClusterSecretStore/local-vault-backend"
+                cleanup_ok
+                exit 0
+              else
+                echo "smoke-test-secret did not sync the expected value in time (got: '$ACTUAL')."
+                echo "Leaving namespace '$NS' and Vault path '$KV_PATH' in place for debugging."
+                exit 1
+              fi

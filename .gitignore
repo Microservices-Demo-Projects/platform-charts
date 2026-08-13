@@ -6,7 +6,6 @@ secret.md
 # Helm dependencies
 charts/
 tmpcharts/
-Chart.lock
 
 # OS specific
 .DS_Store

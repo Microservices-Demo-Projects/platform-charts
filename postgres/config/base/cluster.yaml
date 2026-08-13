@@ -1,0 +1,124 @@
+# CNPG Cluster CR: a 3-instance (1 primary + 2 replica) HA PostgreSQL cluster.
+#
+# Resulting Services (CNPG convention: `<name>-rw|-ro|-r`):
+#   postgres-rw.postgres.svc.cluster.local:5432  (primary, read/write)
+#   postgres-ro.postgres.svc.cluster.local:5432  (replicas, read-only)
+#   postgres-r.postgres.svc.cluster.local:5432   (any instance, read)
+#
+# The hashicorp-vault component's Vault CR (externalConfig database/config/pocdb)
+# must point its connection_url at postgres-rw.postgres.svc.cluster.local:5432/pocdb.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  namespace: postgres
+spec:
+  instances: 3
+
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie
+
+  storage:
+    size: 5Gi
+
+  # No superuserSecret override: CNPG auto-generates and manages its own
+  # `postgres-superuser` (<cluster-name>-superuser) Secret (basic-auth type,
+  # username/password keys). pushsecret.yaml pushes its password to Vault at
+  # kv/db/postgres-root, replacing the old ExternalSecret pull that created a
+  # circular boot dependency (Postgres waiting on Vault for its own password
+  # before Vault itself could reach Postgres).
+  enableSuperuserAccess: true
+
+  certificates:
+    serverCASecret: postgres-server-tls
+    serverTLSSecret: postgres-server-tls
+    clientCASecret: postgres-server-tls
+    replicationTLSSecret: postgres-replication-tls
+
+  managed:
+    roles:
+      # Pure permission/group roles (NOLOGIN) applications are granted into.
+      - name: app_ro
+        login: false
+        comment: Read-only application role for the app schema in pocdb.
+      - name: app_rw
+        login: false
+        comment: Read-write application role for the app schema in pocdb.
+      # Vault's own service role: authenticates via client certificate only
+      # (CN "vault", trusted through clientCASecret above), never a password,
+      # and is allowed to CREATE/GRANT roles so it can mint & bind dynamic
+      # vlt_app_ro_*/vlt_app_rw_* users into app_ro/app_rw at lease-creation
+      # time (see hashicorp-vault's database/roles/{app-ro,app-rw} config).
+      - name: vault
+        login: true
+        createrole: true
+        disablePassword: true
+        comment: HashiCorp Vault database secrets engine service role (mTLS only).
+
+  bootstrap:
+    initdb:
+      database: pocdb
+      owner: postgres
+      postInitApplicationSQL:
+        # -- Vault service role (mirrors managed.roles above; kept here too so
+        # -- it exists *before* the GRANT ... TO vault statements run in this
+        # -- same bootstrap script -- managed.roles reconciliation happens on
+        # -- the running instance, which is not guaranteed to have executed
+        # -- yet at initdb time). CREATE USER defaults to LOGIN, no password.
+        - |
+          -- Creating vault user without password i.e., it will login with cert / mTLS only
+          -- Vault user is purely for role management i.e., create new users and rotating credentials.
+          CREATE USER vault WITH CREATEROLE;
+        - CREATE SCHEMA app;
+        - CREATE ROLE app_ro NOLOGIN;
+        - CREATE ROLE app_rw NOLOGIN;
+        - GRANT USAGE ON SCHEMA app TO app_ro, app_rw;
+        - GRANT SELECT ON ALL TABLES IN SCHEMA app TO app_ro;
+        - GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app TO app_rw;
+        - |
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app
+          GRANT SELECT ON TABLES TO app_ro;
+        - |
+          ALTER DEFAULT PRIVILEGES IN SCHEMA app
+          GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_rw;
+        # -- Allows vault to grant these roles to the dynamic users it creates.
+        - GRANT app_ro TO vault WITH ADMIN OPTION;
+        - GRANT app_rw TO vault WITH ADMIN OPTION;
+
+  postgresql:
+    pg_hba:
+      # ----------------------------------------------------------------------
+      # 1. mTLS ONLY for the vault service role, no password fallback.
+      # ----------------------------------------------------------------------
+      - hostssl all vault 0.0.0.0/0 cert clientcert=verify-full
+      - hostssl all vault ::/0       cert clientcert=verify-full
+
+      # ----------------------------------------------------------------------
+      # 2. Vault-issued dynamic users: TLS + password (scram-sha-256).
+      # These are matched by ROLE MEMBERSHIP (the "+role" syntax matches any
+      # role that is a MEMBER of app_ro/app_rw), not by username glob -- fixing
+      # the old Bitnami config's `vlt_+` rule, which was invalid glob syntax
+      # and never matched anything (pg_hba is first-match-wins with no
+      # fallthrough on a non-match, so those two lines were silently dead).
+      # Vault's creation_statements GRANT the dynamic vlt_app_ro_*/vlt_app_rw_*
+      # user into app_ro/app_rw at creation time, so membership matching works.
+      # ----------------------------------------------------------------------
+      - hostssl all +app_ro 0.0.0.0/0 scram-sha-256
+      - hostssl all +app_ro ::/0       scram-sha-256
+      - hostssl all +app_rw 0.0.0.0/0 scram-sha-256
+      - hostssl all +app_rw ::/0       scram-sha-256
+
+      # ----------------------------------------------------------------------
+      # 3. Everyone else (the postgres superuser, break-glass, etc.): allow
+      # mTLS if a client cert is presented, otherwise fall back to
+      # TLS + password. Placed AFTER the specific rules above so it never
+      # shadows them.
+      # ----------------------------------------------------------------------
+      - hostssl all all 0.0.0.0/0 cert clientcert=verify-full
+      - hostssl all all ::/0       cert clientcert=verify-full
+      - hostssl all all 0.0.0.0/0 scram-sha-256
+      - hostssl all all ::/0       scram-sha-256
+
+      # ----------------------------------------------------------------------
+      # 4. Local (in-pod) connections: password only, for break-glass access.
+      # ----------------------------------------------------------------------
+      - local all all scram-sha-256

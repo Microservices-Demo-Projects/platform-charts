@@ -1,0 +1,9 @@
+# Kubernetes-specific overrides for the headlamp wrapper chart.
+# Headlamp is a stateless dashboard behind TLS, so it can run with multiple
+# replicas and a PodDisruptionBudget for better availability on standard
+# Kubernetes.
+
+headlamp:
+  replicaCount: 2
+  podDisruptionBudget:
+    enabled: true

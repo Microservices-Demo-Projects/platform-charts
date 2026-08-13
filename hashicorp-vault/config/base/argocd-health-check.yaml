@@ -1,0 +1,41 @@
+# Extends the cluster's argocd-cm ConfigMap with a custom health check for
+# vault.banzaicloud.com/Vault - ArgoCD has no built-in check for this CRD, so
+# without this the vault-config Application would report Healthy the instant
+# the CR is created, before Vault is actually initialized/unsealed/elected a
+# raft leader. That would let external-secrets-config (wave 50) and postgres
+# (wave 60) start syncing against a Vault that isn't actually usable yet.
+#
+# Applied via ServerSideApply (see argocd/kubernetes/apps/vault-config.yaml),
+# which merges just this one `data` key into the existing argocd-cm without
+# touching any other operator-managed settings in it.
+#
+# status.leader/status.conditions confirmed against the actual CRD schema:
+# oci://ghcr.io/bank-vaults/helm-charts/vault-operator:1.24.0
+# (charts/crds/crds/vault.banzaicloud.com_vaults.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
+data:
+  resource.customizations.health.vault.banzaicloud.com_Vault: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for the Vault raft cluster to elect a leader"
+    if obj.status ~= nil then
+      for i, condition in ipairs(obj.status.conditions or {}) do
+        if condition.type == "Failed" and condition.status == "True" then
+          hs.status = "Degraded"
+          hs.message = condition.message or condition.error or "Vault reconciliation failed"
+          return hs
+        end
+      end
+      if obj.status.leader ~= nil and obj.status.leader ~= "" then
+        hs.status = "Healthy"
+        hs.message = "Vault raft cluster has a leader: " .. obj.status.leader
+        return hs
+      end
+    end
+    return hs

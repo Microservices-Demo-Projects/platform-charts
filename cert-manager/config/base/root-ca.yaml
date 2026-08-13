@@ -1,0 +1,47 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: self-signed
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: demo-root-ca
+  namespace: cert-manager
+spec:
+  secretName: demo-root-ca-tls
+  isCA: true
+  duration: 8760h # 1 year
+  renewBefore: 240h # 10 days
+  privateKey:
+    algorithm: RSA
+    size: 4096
+    rotationPolicy: Always
+  subject:
+    organizationalUnits:
+    - "Demo Root CA"
+    organizations:
+    - "Demo Apps"
+    countries:
+    - "CA"
+  commonName: "Demo Root CA"
+  dnsNames:
+    - "demo-ca"
+  issuerRef:
+    name: self-signed
+    kind: ClusterIssuer
+    group: cert-manager.io
+  secretTemplate:
+    labels:
+      app.kubernetes.io/name: demo
+      app.kubernetes.io/part-of: Microservices-Demo-Projects
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: demo-ca
+spec:
+  ca:
+    secretName: demo-root-ca-tls

@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      path: cert-manager/chart
+      helm:
+        valueFiles:
+          - $values/kubernetes.yaml
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      ref: values
+      path: cert-manager/values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

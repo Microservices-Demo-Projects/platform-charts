@@ -1,0 +1,18 @@
+# Kubernetes-specific overrides for the cert-manager wrapper chart.
+# Runs the controller, webhook, and cainjector with 2 replicas and enables a
+# PodDisruptionBudget for each, for better availability on standard Kubernetes.
+
+cert-manager:
+  replicaCount: 2
+  podDisruptionBudget:
+    enabled: true
+
+  webhook:
+    replicaCount: 2
+    podDisruptionBudget:
+      enabled: true
+
+  cainjector:
+    replicaCount: 2
+    podDisruptionBudget:
+      enabled: true

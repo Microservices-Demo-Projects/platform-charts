@@ -1,0 +1,33 @@
+# The CloudNativePG controller only. The actual PostgreSQL Cluster CR is
+# deployed separately by postgres.yaml at sync-wave 60, after Vault's
+# database secrets engine and role exist to consume it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudnative-pg-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      path: postgres/chart
+      helm:
+        valueFiles:
+          - $values/kubernetes.yaml
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: HEAD
+      ref: values
+      path: postgres/values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

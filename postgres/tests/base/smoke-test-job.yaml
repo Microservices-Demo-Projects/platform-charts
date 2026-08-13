@@ -1,0 +1,84 @@
+# PostSync smoke test: proves Vault's `database/config/pocdb` connection (set
+# up with verify_connection: false in the hashicorp-vault component, since
+# Postgres didn't exist yet at that point) actually works now that the real
+# Cluster is up, by requesting and using a live dynamic `app-ro` lease.
+#
+# On failure the job (and any lease it created) is left in place for
+# debugging rather than being cleaned up.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-smoke-test
+  namespace: postgres
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-smoke-test
+  namespace: postgres
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: postgres-smoke-test
+    spec:
+      serviceAccountName: postgres-smoke-test
+      restartPolicy: Never
+      containers:
+        - name: smoke-test
+          image: hashicorp/vault:1.21
+          env:
+            - name: VAULT_ADDR
+              value: https://vault.vault.svc.cluster.local:8200
+            - name: VAULT_SKIP_VERIFY
+              value: "true"
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-root-token
+                  key: token
+                  optional: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache postgresql-client >/dev/null
+
+              echo "Requesting a live dynamic lease from database/creds/app-ro ..."
+              vault read -format=json database/creds/app-ro > /tmp/creds.json
+
+              LEASE_ID=$(sed -n 's/.*"lease_id": *"\([^"]*\)".*/\1/p' /tmp/creds.json | head -1)
+              DB_USER=$(sed -n 's/.*"username": *"\([^"]*\)".*/\1/p' /tmp/creds.json | head -1)
+              DB_PASS=$(sed -n 's/.*"password": *"\([^"]*\)".*/\1/p' /tmp/creds.json | head -1)
+
+              if [ -z "$LEASE_ID" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
+                echo "Failed to parse a lease/username/password from Vault's response; leaving job for debugging."
+                cat /tmp/creds.json
+                exit 1
+              fi
+              echo "Got dynamic user: $DB_USER (lease: $LEASE_ID)"
+
+              echo "Connecting to postgres-rw.postgres.svc.cluster.local as $DB_USER and running SELECT 1 ..."
+              if ! PGPASSWORD="$DB_PASS" psql \
+                  "host=postgres-rw.postgres.svc.cluster.local port=5432 dbname=pocdb user=$DB_USER sslmode=verify-full sslrootcert=/vault/userconfig/vault-tls/ca.crt" \
+                  -v ON_ERROR_STOP=1 -c "SELECT 1;"; then
+                echo "psql connectivity check failed; leaving lease $LEASE_ID and job for debugging."
+                exit 1
+              fi
+
+              echo "Connectivity and role membership verified; revoking lease $LEASE_ID ..."
+              vault lease revoke "$LEASE_ID"
+
+              echo "Smoke test passed."
+          volumeMounts:
+            - name: vault-tls
+              mountPath: /vault/userconfig/vault-tls
+              readOnly: true
+      volumes:
+        - name: vault-tls
+          secret:
+            secretName: vault-tls

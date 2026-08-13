@@ -1,0 +1,26 @@
+# App-of-apps: the single Application a human/CI applies by hand. Syncing it
+# applies every Application manifest in argocd/kubernetes/apps/, which then
+# sync themselves in order via their own argocd.argoproj.io/sync-wave.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-root
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+    targetRevision: HEAD
+    path: argocd/kubernetes/apps
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
