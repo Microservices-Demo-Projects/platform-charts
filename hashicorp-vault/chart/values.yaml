@@ -1,13 +1,7 @@
-# Default values for hashicorp-vault-operator.
-# This is a wrapper chart, so we primarily configure the subchart 'vault-operator'
-# (the bank-vaults community operator, Apache-2.0, NOT HashiCorp-official).
-#
-# This chart only deploys the *operator* - the Deployment that watches for
-# `Vault` custom resources. It does not deploy Vault itself. The actual Vault
-# server is declared as a `Vault` CR under config/base/vault.yaml (sync-wave
-# 40), which the operator (deployed by this chart at sync-wave 30) picks up
-# and reconciles into a StatefulSet, TLS wiring, and init/unseal handling.
-#
+# Wrapper chart configuring the 'vault-operator' subchart (bank-vaults
+# community operator, Apache-2.0, NOT HashiCorp-official). Deploys only the
+# operator (sync-wave 30) - the actual Vault server is a separate `Vault` CR
+# under config/base/vault.yaml (sync-wave 40) that the operator reconciles.
 # See manual/README.md for the old, hand-run `hashicorp/vault` chart path.
 
 vault-operator:

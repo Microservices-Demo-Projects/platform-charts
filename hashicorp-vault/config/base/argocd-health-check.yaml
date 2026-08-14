@@ -1,17 +1,10 @@
-# Extends the cluster's argocd-cm ConfigMap with a custom health check for
-# vault.banzaicloud.com/Vault - ArgoCD has no built-in check for this CRD, so
-# without this the vault-config Application would report Healthy the instant
-# the CR is created, before Vault is actually initialized/unsealed/elected a
-# raft leader. That would let external-secrets-config (wave 50) and postgres
-# (wave 60) start syncing against a Vault that isn't actually usable yet.
-#
-# Applied via ServerSideApply (see argocd/kubernetes/apps/vault-config.yaml),
-# which merges just this one `data` key into the existing argocd-cm without
-# touching any other operator-managed settings in it.
-#
-# status.leader/status.conditions confirmed against the actual CRD schema:
-# oci://ghcr.io/bank-vaults/helm-charts/vault-operator:1.24.0
-# (charts/crds/crds/vault.banzaicloud.com_vaults.yaml).
+# ArgoCD has no built-in health check for vault.banzaicloud.com/Vault, so
+# without this the vault-config Application would report Healthy the moment
+# the CR is created - before Vault is actually unsealed and has a raft
+# leader - letting later waves (external-secrets-config, postgres) sync
+# against a Vault that isn't usable yet. ServerSideApply merges just this
+# `data` key into argocd-cm without touching other operator-managed settings.
+# status.leader/conditions confirmed against vault-operator:1.24.0's CRD.
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -1,25 +1,10 @@
-# Client-certificate trust for the CNPG "postgres" Cluster.
-#
-# CNPG's Cluster.spec.certificates.clientCASecret must point at a secret
-# containing `ca.crt` used to validate any client certificate presented
-# during mTLS auth (this is what lets pg_hba trust the `vault` user's client
-# cert -- see cluster.yaml's cert-auth rule and hashicorp-vault's `vault-tls`
-# Certificate, CN "vault", signed by the same `demo-ca` ClusterIssuer).
-#
-# We reuse the CA bundle already carried in `postgres-server-tls` (see
-# certificate-server.yaml) as the clientCASecret too, rather than minting a
-# second CA -- the demo-ca ClusterIssuer IS the one shared CA for this whole
-# platform, so any cert-manager-issued secret's `ca.crt` is identical.
-# clientCASecret is set to `postgres-server-tls` directly in cluster.yaml;
-# no extra resource is needed for that part.
-#
-# The one thing we DO need here: clientCASecret's description states that if
-# its `ca.key` is not provided (ours isn't -- cert-manager never hands out a
-# CA's private key to a leaf Certificate), CNPG needs an explicit
-# `replicationTLSSecret` for the internal `streaming_replica` mTLS user,
-# because it can no longer mint that client cert itself from the CA. With
-# instances: 3 (1 primary + 2 replicas) this is required for streaming
-# replication to establish.
+# clientCASecret (cluster.yaml) just reuses postgres-server-tls's ca.crt -
+# no separate resource needed, since demo-ca is the one shared CA platform-
+# wide. What IS needed here: clientCASecret's ca.key is never provided by
+# cert-manager, so CNPG can't mint the internal streaming_replica client
+# cert itself and needs this explicit replicationTLSSecret instead -
+# required for the 3-instance (1 primary + 2 replica) streaming replication
+# to establish.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
