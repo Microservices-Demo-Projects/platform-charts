@@ -9,3 +9,5 @@ tmpcharts/
 
 # OS specific
 .DS_Store
+
+**/.vscode

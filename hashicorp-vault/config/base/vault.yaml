@@ -177,7 +177,7 @@ spec:
           config:
             - name: pocdb
               plugin_name: postgresql-database-plugin
-              allowed_roles: ["app-ro", "app-rw", "app-setup"]
+              allowed_roles: ["app-ro", "app-rw", "app-setup", "postgres-superuser"]
               # postgres/config/base/cluster.yaml's pg_hba requires mTLS-only
               # auth for `vault` (no password fallback), so this connects
               # with the same cert-manager client cert the operator mounts
