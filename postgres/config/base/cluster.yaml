@@ -48,10 +48,22 @@ spec:
       # and is allowed to CREATE/GRANT roles so it can mint & bind dynamic
       # vlt_app_ro_*/vlt_app_rw_* users into app_ro/app_rw at lease-creation
       # time (see hashicorp-vault's database/roles/{app-ro,app-rw} config).
+      #
+      # inRoles is required, not just cosmetic: CNPG's managed-role
+      # reconciler treats a role's inRoles list as the sole source of truth
+      # for its memberships and continuously REVOKEs anything outside it -
+      # including the WITH ADMIN OPTION grant postInitApplicationSQL runs at
+      # bootstrap. Without this, every reconcile silently strips vault's
+      # ability to grant app_ro/app_rw, breaking dynamic credential creation
+      # (PG16+ requires ADMIN OPTION to grant a role you didn't create,
+      # regardless of CREATEROLE).
       - name: vault
         login: true
         createrole: true
         disablePassword: true
+        inRoles:
+          - app_ro
+          - app_rw
         comment: HashiCorp Vault database secrets engine service role (mTLS only).
 
   bootstrap:
