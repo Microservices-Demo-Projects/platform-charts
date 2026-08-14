@@ -106,6 +106,11 @@ spec:
                 cat /tmp/creds.json
                 exit 1
               fi
+              # Vault's `username` field is just the resolved {{name}} macro, not
+              # the full role name - the actual role is created by hashicorp-vault's
+              # creation_statements as "vlt_app_ro_{{name}}", so that literal prefix
+              # has to be reapplied here to connect as the right role.
+              DB_USER="vlt_app_ro_$DB_USER"
               echo "Got dynamic user: $DB_USER (lease: $LEASE_ID)"
 
               echo "Connecting to postgres-rw.postgres.svc.cluster.local as $DB_USER and running SELECT 1 ..."
