@@ -43,39 +43,27 @@ spec:
       - name: app_rw
         login: false
         comment: Read-write application role for the app schema in pocdb.
-      # Vault's own service role: authenticates via client certificate only
-      # (CN "vault", trusted through clientCASecret above), never a password,
-      # and is allowed to CREATE/GRANT roles so it can mint & bind dynamic
-      # vlt_app_ro_*/vlt_app_rw_* users into app_ro/app_rw at lease-creation
-      # time (see hashicorp-vault's database/roles/{app-ro,app-rw} config).
-      #
-      # inRoles is required, not just cosmetic: CNPG's managed-role
-      # reconciler treats a role's inRoles list as the sole source of truth
+      # Deliberately NOT managed here: CNPG's managed-role reconciler treats
+      # a role's `inRoles` list (default empty) as the sole source of truth
       # for its memberships and continuously REVOKEs anything outside it -
-      # including the WITH ADMIN OPTION grant postInitApplicationSQL runs at
-      # bootstrap. Without this, every reconcile silently strips vault's
-      # ability to grant app_ro/app_rw, breaking dynamic credential creation
-      # (PG16+ requires ADMIN OPTION to grant a role you didn't create,
-      # regardless of CREATEROLE).
-      - name: vault
-        login: true
-        createrole: true
-        disablePassword: true
-        inRoles:
-          - app_ro
-          - app_rw
-        comment: HashiCorp Vault database secrets engine service role (mTLS only).
+      # including the WITH ADMIN OPTION grant below, and `inRoles` itself has
+      # no way to request ADMIN OPTION (a plain GRANT, re-applied every
+      # reconcile, silently strips whatever option was there before). Since
+      # PG16+ requires ADMIN OPTION to grant a role you didn't create
+      # (CREATEROLE alone no longer suffices), letting CNPG manage "vault"
+      # here breaks dynamic credential creation within minutes of every
+      # start. Left entirely to postInitApplicationSQL below instead, which
+      # runs once at bootstrap and is never touched again.
 
   bootstrap:
     initdb:
       database: pocdb
       owner: postgres
       postInitApplicationSQL:
-        # -- Vault service role (mirrors managed.roles above; kept here too so
-        # -- it exists *before* the GRANT ... TO vault statements run in this
-        # -- same bootstrap script -- managed.roles reconciliation happens on
-        # -- the running instance, which is not guaranteed to have executed
-        # -- yet at initdb time). CREATE USER defaults to LOGIN, no password.
+        # -- Vault service role. This is its only definition (see the comment
+        # -- above managed.roles for why it's deliberately not a managed
+        # -- role) - CREATE USER defaults to LOGIN, no password set means
+        # -- cert/mTLS-only auth.
         - |
           -- Creating vault user without password i.e., it will login with cert / mTLS only
           -- Vault user is purely for role management i.e., create new users and rotating credentials.
