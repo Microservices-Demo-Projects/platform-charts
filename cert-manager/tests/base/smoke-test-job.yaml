@@ -8,7 +8,7 @@ metadata:
   namespace: cert-manager
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -16,14 +16,20 @@ metadata:
   name: cert-manager-smoke-test
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 rules:
+  # `patch` matters on a retry: a re-run's `kubectl apply` finds the object
+  # already there and patches instead of creating it.
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get", "create", "delete"]
+    verbs: ["get", "create", "patch", "delete"]
+  # For the `kubectl wait` on the cert-manager webhook pods below.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["cert-manager.io"]
     resources: ["certificates"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -31,7 +37,7 @@ metadata:
   name: cert-manager-smoke-test
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: cert-manager-smoke-test
@@ -50,7 +56,7 @@ metadata:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
-  backoffLimit: 0
+  backoffLimit: 2
   template:
     metadata:
       name: cert-manager-smoke-test
@@ -66,10 +72,41 @@ spec:
             - |
               set -e
 
+              # Retry a command until it succeeds, bounded at ~5 min. Used by
+              # every smoke test in this repo so waiting behaves the same way
+              # everywhere.
+              retry() {
+                n=0
+                until [ "$n" -ge 60 ]; do
+                  "$@" && return 0
+                  n=$((n + 1))
+                  echo "waiting for: $* (attempt $n/60)"
+                  sleep 5
+                done
+                echo "timed out waiting for: $*"
+                return 1
+              }
+
+              # Creating a Certificate goes through cert-manager's validating
+              # webhook, which returns a hard "connection refused" (a failed
+              # sync, not a retried one) if its pods aren't serving yet.
+              # `kubectl wait` errors out immediately rather than waiting when
+              # nothing matches yet, so wait for existence first, then
+              # readiness. (`get -l` exits 0 on an empty list, hence the -n
+              # test.)
+              webhook_exists() {
+                [ -n "$(kubectl get pod -l app.kubernetes.io/component=webhook \
+                  -n cert-manager -o name 2>/dev/null)" ]
+              }
+              retry webhook_exists
+              kubectl wait --for=condition=Ready pod \
+                -l app.kubernetes.io/component=webhook \
+                -n cert-manager --timeout=300s
+
               kubectl create namespace test-certs \
                 --dry-run=client -o yaml | kubectl apply -f -
 
-              cat <<'EOF' | kubectl apply -f -
+              cat <<'EOF' > /tmp/example-cert.yaml
               apiVersion: cert-manager.io/v1
               kind: Certificate
               metadata:
@@ -105,7 +142,11 @@ spec:
                   group: cert-manager.io
               EOF
 
-              if kubectl wait --for=condition=Ready certificate/example-cert -n test-certs --timeout=60s; then
+              # Retried as well as waited for: the webhook's pods can be Ready
+              # a moment before its Service endpoints actually accept traffic.
+              retry kubectl apply -f /tmp/example-cert.yaml
+
+              if kubectl wait --for=condition=Ready certificate/example-cert -n test-certs --timeout=300s; then
                 echo "example-cert is Ready, cleaning up test-certs namespace"
                 # --wait=false: the ServiceAccount only has get/create/delete on
                 # namespaces (not watch/list), so a waiting delete hangs forever

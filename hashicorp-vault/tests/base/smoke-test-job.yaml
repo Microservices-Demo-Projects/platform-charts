@@ -10,7 +10,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -19,7 +19,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -33,7 +33,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: vault-smoke-test
@@ -56,7 +56,7 @@ metadata:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
-  backoffLimit: 0
+  backoffLimit: 2
   template:
     metadata:
       name: vault-smoke-test
@@ -97,11 +97,30 @@ spec:
             - |
               set -e
 
+              # Retry a command until it succeeds, bounded at ~5 min. Used by
+              # every smoke test in this repo so waiting behaves the same way
+              # everywhere.
+              retry() {
+                n=0
+                until [ "$n" -ge 60 ]; do
+                  "$@" && return 0
+                  n=$((n + 1))
+                  echo "waiting for: $* (attempt $n/60)"
+                  sleep 5
+                done
+                echo "timed out waiting for: $*"
+                return 1
+              }
+
               KV_PATH="kv/smoke-test"
               EXPECTED="ok"
 
+              # The operator needs time to init, unseal, and elect a raft
+              # leader before Vault answers writes - retried rather than
+              # assumed. Once this succeeds Vault is up, so the reads and
+              # deletes below need no waiting of their own.
               echo "Writing $KV_PATH..."
-              vault kv put "$KV_PATH" value="$EXPECTED"
+              retry vault kv put "$KV_PATH" value="$EXPECTED"
 
               echo "Reading $KV_PATH..."
               ACTUAL=$(vault kv get -field=value "$KV_PATH")

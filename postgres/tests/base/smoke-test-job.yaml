@@ -12,7 +12,39 @@ metadata:
   namespace: postgres
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+---
+# Lets the init container `kubectl wait` for the CNPG primary pod to be Ready
+# before the test tries to connect to it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: postgres-smoke-test-pods
+  namespace: postgres
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: postgres-smoke-test-pods
+  namespace: postgres
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+subjects:
+  - kind: ServiceAccount
+    name: postgres-smoke-test
+    namespace: postgres
+roleRef:
+  kind: Role
+  name: postgres-smoke-test-pods
+  apiGroup: rbac.authorization.k8s.io
 ---
 # The job needs the operator-generated Vault root token to call `vault read
 # database/creds/app-ro` (same problem/fix as external-secrets' smoke test:
@@ -26,7 +58,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -40,7 +72,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: postgres-smoke-test
@@ -64,7 +96,7 @@ metadata:
     # in place - otherwise the apply fails with "field is immutable".
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
-  backoffLimit: 0
+  backoffLimit: 2
   template:
     metadata:
       name: postgres-smoke-test
@@ -83,6 +115,41 @@ spec:
             - -c
             - |
               set -e
+
+              # Retry a command until it succeeds, bounded at ~5 min. Used by
+              # every smoke test in this repo so waiting behaves the same way
+              # everywhere.
+              retry() {
+                n=0
+                until [ "$n" -ge 60 ]; do
+                  "$@" && return 0
+                  n=$((n + 1))
+                  echo "waiting for: $* (attempt $n/60)"
+                  sleep 5
+                done
+                echo "timed out waiting for: $*"
+                return 1
+              }
+
+              # A primary that's still being promoted refuses connections, so
+              # wait for it here rather than letting the main container's psql
+              # fail the whole test. Done in this container because the
+              # hashicorp/vault image has no kubectl. `kubectl wait` errors out
+              # immediately rather than waiting when nothing matches yet, so
+              # wait for existence first, then readiness. (`get -l` exits 0 on
+              # an empty list, hence the -n test.)
+              primary_exists() {
+                [ -n "$(kubectl get pod -l cnpg.io/cluster=postgres,role=primary \
+                  -n postgres -o name 2>/dev/null)" ]
+              }
+              retry primary_exists
+              kubectl wait --for=condition=Ready pod \
+                -l cnpg.io/cluster=postgres,role=primary \
+                -n postgres --timeout=300s
+
+              # The operator creates this Secret during Vault's first-boot
+              # init, so it may not exist yet when this job starts.
+              retry kubectl get secret vault-unseal-keys -n vault
               kubectl get secret vault-unseal-keys -n vault -o jsonpath='{.data.vault-root}' | base64 -d > /shared/vault-token
           volumeMounts:
             - name: shared
@@ -102,10 +169,33 @@ spec:
               set -e
               apk add --no-cache postgresql-client >/dev/null
 
+              # Retry a command until it succeeds, bounded at ~5 min. Used by
+              # every smoke test in this repo so waiting behaves the same way
+              # everywhere.
+              retry() {
+                n=0
+                until [ "$n" -ge 60 ]; do
+                  "$@" && return 0
+                  n=$((n + 1))
+                  echo "waiting for: $* (attempt $n/60)"
+                  sleep 5
+                done
+                echo "timed out waiting for: $*"
+                return 1
+              }
+
               export VAULT_TOKEN=$(cat /shared/vault-token)
 
+              # Vault may still be unsealing, electing a raft leader, or
+              # finishing its database-secrets-engine configuration - retried
+              # rather than assumed ready. Writes to the temp file only on
+              # success so a partial response can't be parsed below.
               echo "Requesting a live dynamic lease from database/creds/app-ro ..."
-              vault read -format=json database/creds/app-ro > /tmp/creds.json
+              get_lease() {
+                vault read -format=json database/creds/app-ro > /tmp/creds.json.tmp \
+                  && mv /tmp/creds.json.tmp /tmp/creds.json
+              }
+              retry get_lease
 
               LEASE_ID=$(sed -n 's/.*"lease_id": *"\([^"]*\)".*/\1/p' /tmp/creds.json | head -1)
               DB_USER=$(sed -n 's/.*"username": *"\([^"]*\)".*/\1/p' /tmp/creds.json | head -1)

@@ -8,7 +8,7 @@ metadata:
   namespace: external-secrets
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -16,17 +16,19 @@ metadata:
   name: external-secrets-smoke-test
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 rules:
+  # `patch` matters on a retry: a re-run's `kubectl apply` finds the object
+  # already there and patches instead of creating it.
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get", "create", "delete"]
+    verbs: ["get", "create", "patch", "delete"]
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list"]
   - apiGroups: ["external-secrets.io"]
     resources: ["externalsecrets"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -34,7 +36,7 @@ metadata:
   name: external-secrets-smoke-test
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: external-secrets-smoke-test
@@ -58,14 +60,15 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["create"]
+  # list/watch (not just get) so `kubectl wait` can observe vault-0 going Ready.
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get"]
@@ -78,7 +81,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: external-secrets-smoke-test
@@ -97,7 +100,7 @@ metadata:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
-  backoffLimit: 0
+  backoffLimit: 2
   template:
     metadata:
       name: external-secrets-smoke-test
@@ -112,6 +115,21 @@ spec:
             - -c
             - |
               set -e
+
+              # Retry a command until it succeeds, bounded at ~5 min. Used by
+              # every smoke test in this repo so waiting behaves the same way
+              # everywhere.
+              retry() {
+                n=0
+                until [ "$n" -ge 60 ]; do
+                  "$@" && return 0
+                  n=$((n + 1))
+                  echo "waiting for: $* (attempt $n/60)"
+                  sleep 5
+                done
+                echo "timed out waiting for: $*"
+                return 1
+              }
 
               NS=test-eso
               VAULT_NS=vault
@@ -131,8 +149,19 @@ spec:
 
               kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
+              # Everything below execs into vault-0, which fails outright if
+              # the pod isn't running yet. `kubectl wait` errors immediately
+              # rather than waiting when the pod doesn't exist yet, so wait for
+              # existence first, then readiness.
+              retry kubectl get pod "$VAULT_POD" -n "$VAULT_NS"
+              kubectl wait --for=condition=Ready "pod/$VAULT_POD" \
+                -n "$VAULT_NS" --timeout=300s
+
               # The vault-0 container has no VAULT_TOKEN env var set, so fetch
-              # the operator-generated root token to authenticate the CLI.
+              # the operator-generated root token to authenticate the CLI. The
+              # operator creates this Secret during first-boot init, so it may
+              # not exist the moment this job starts.
+              retry kubectl get secret vault-unseal-keys -n "$VAULT_NS"
               VAULT_TOKEN=$(kubectl get secret vault-unseal-keys -n "$VAULT_NS" -o jsonpath='{.data.vault-root}' | base64 -d)
 
               # 1. Write a throwaway secret into Vault's KV engine
@@ -164,15 +193,14 @@ spec:
               EOF
 
               # 3. Wait for the resulting Kubernetes Secret to appear with the expected value
-              ACTUAL=""
-              for i in $(seq 1 30); do
-                ACTUAL=$(kubectl get secret smoke-test-secret -n "$NS" \
-                  -o go-template='{{ index .data "value" | base64decode }}' 2>/dev/null || true)
-                if [ "$ACTUAL" = "$EXPECTED" ]; then
-                  break
-                fi
-                sleep 2
-              done
+              synced() {
+                [ "$(kubectl get secret smoke-test-secret -n "$NS" \
+                  -o go-template='{{ index .data "value" | base64decode }}' 2>/dev/null)" = "$EXPECTED" ]
+              }
+              retry synced || true
+
+              ACTUAL=$(kubectl get secret smoke-test-secret -n "$NS" \
+                -o go-template='{{ index .data "value" | base64decode }}' 2>/dev/null || true)
 
               if [ "$ACTUAL" = "$EXPECTED" ]; then
                 echo "smoke-test-secret synced correctly from Vault via ClusterSecretStore/local-vault-backend"
