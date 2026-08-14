@@ -5,4 +5,4 @@ resources:
   - certificate-server.yaml
   - certificate-client-ca.yaml
   - cluster.yaml
-  - pushsecret.yaml
+  - external-secret.yaml

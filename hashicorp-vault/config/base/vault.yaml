@@ -1,8 +1,6 @@
-# Vault server ServiceAccount. The Vault CR's spec.serviceAccount below
-# references this. It needs `system:auth-delegator` so Vault's own
-# `kubernetes` auth method can call the TokenReview API to validate
-# ServiceAccount tokens presented by clients (external-secrets, apps, etc.)
-# authenticating against Vault.
+# Vault server ServiceAccount, referenced by the Vault CR's spec.serviceAccount
+# below. Needs `system:auth-delegator` for Vault's `kubernetes` auth method to
+# call the TokenReview API when validating client ServiceAccount tokens.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -22,12 +20,9 @@ roleRef:
   name: system:auth-delegator
   apiGroup: rbac.authorization.k8s.io
 ---
-# Vault itself (via the bank-vaults sidecar) reads and writes the
-# vault-unseal-keys/vault-root Secrets in this namespace directly through
-# the Kubernetes API - that's what makes unsealConfig.kubernetes fully
-# automatic. The vault-operator's own ClusterRole only covers what the
-# *operator* needs; the Vault pod's own ServiceAccount needs this
-# separately.
+# The Vault pod itself (not the operator) reads/writes vault-unseal-keys via
+# the Kubernetes API for unsealConfig.kubernetes - the operator's own
+# ClusterRole doesn't cover this, so the pod's ServiceAccount needs it here.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -52,16 +47,11 @@ roleRef:
   name: vault
   apiGroup: rbac.authorization.k8s.io
 ---
-# The Vault custom resource. The bank-vaults vault-operator (deployed by
-# chart/ at sync-wave 30) watches for this and reconciles it into a
-# StatefulSet, Services, TLS wiring, and - critically - fully automated
-# init + unseal (no manual `vault operator init`/`unseal` required, and no
-# manual re-unseal after restarts, unlike manual/README.md).
-#
-# CRD reference confirmed against
-# oci://ghcr.io/bank-vaults/helm-charts/vault-operator:1.24.0
-# (charts/crds/crds/vault.banzaicloud.com_vaults.yaml) and the operator's own
-# deploy/examples/*.yaml (bank-vaults/vault-operator @ main).
+# The Vault custom resource. The bank-vaults vault-operator (chart/, wave 30)
+# reconciles this into a StatefulSet, Services, TLS wiring, and fully
+# automated init + unseal (no manual `vault operator init`/`unseal`, unlike
+# manual/README.md). CRD reference: vault-operator:1.24.0's
+# vault.banzaicloud.com_vaults.yaml.
 apiVersion: vault.banzaicloud.com/v1alpha1
 kind: Vault
 metadata:
@@ -134,13 +124,11 @@ spec:
     ui: true
 
   # Declarative Vault configuration, applied by the operator's bank-vaults
-  # sidecar once the cluster is unsealed: policies, the `kubernetes` auth
-  # method + roles, and the secrets engines the rest of the platform depends
-  # on (kv-v2 for generic secrets, database for postgres's rotating creds).
-  #
-  # externalConfig is free-form (the CRD only declares it as
-  # x-kubernetes-preserve-unknown-fields); the shape below matches
-  # bank-vaults' own vault-config.yml / deploy/examples/cr-raft.yaml schema.
+  # sidecar once unsealed: policies, the `kubernetes` auth method + roles, and
+  # the secrets engines the platform depends on (kv-v2 for generic secrets,
+  # database for postgres's rotating/static creds). Free-form field (CRD only
+  # declares x-kubernetes-preserve-unknown-fields); shape matches bank-vaults'
+  # own vault-config.yml / deploy/examples/cr-raft.yaml.
   externalConfig:
     policies:
       - name: external-secrets-readonly-policy
@@ -151,15 +139,11 @@ spec:
           path "database/creds/*" {
             capabilities = ["read", "list"]
           }
-          # postgres/config/base/pushsecret.yaml pushes the CNPG-generated
-          # superuser password here (inverts the old circular boot
-          # dependency) - needs create/update, unlike the read-only rule
-          # above.
-          path "kv/data/db/postgres-root" {
-            capabilities = ["create", "update", "read"]
-          }
-          path "kv/metadata/db/postgres-root" {
-            capabilities = ["create", "update", "read", "delete"]
+          # postgres/config/base/external-secret.yaml pulls the current
+          # superuser password from here (Vault owns and rotates it - see
+          # the static_roles comment below).
+          path "database/static-creds/postgres-superuser" {
+            capabilities = ["read"]
           }
 
     auth:
@@ -194,23 +178,19 @@ spec:
             - name: pocdb
               plugin_name: postgresql-database-plugin
               allowed_roles: ["app-ro", "app-rw", "app-setup"]
-              # postgres/config/base/cluster.yaml's pg_hba mandates mTLS-only
-              # auth for the `vault` role (no password fallback: `hostssl all
-              # vault ... cert clientcert=verify-full`), so this connects with
-              # the same cert-manager-issued client cert the operator already
-              # mounts into this pod for the server listener
-              # (existingTlsSecretName: vault-tls, CN "vault" - trusted by
-              # postgres's clientCASecret, which shares the demo-ca bundle).
-              # No username/password: Postgres identifies the role purely by
-              # the client cert's CN via pg_hba's `cert` method.
+              # postgres/config/base/cluster.yaml's pg_hba requires mTLS-only
+              # auth for `vault` (no password fallback), so this connects
+              # with the same cert-manager client cert the operator mounts
+              # for the server listener (CN "vault", trusted via the shared
+              # demo-ca bundle) - no username/password needed.
               connection_url: "postgresql://postgres-rw.postgres.svc.cluster.local:5432/pocdb?sslmode=verify-full&sslrootcert=/vault/tls/ca.crt&sslcert=/vault/tls/server.crt&sslkey=/vault/tls/server.key"
-              # MUST be false: postgres does not exist yet when this first
-              # syncs at wave 40. The mount would otherwise fail to apply.
-              # The postgres component's own smoke test is what actually
-              # exercises this connection once postgres exists.
+              # MUST be false: postgres doesn't exist yet when this first
+              # syncs at wave 40. The postgres component's own smoke test
+              # exercises this connection once it does.
               verify_connection: false
-          # SQL carried over verbatim from the manual path's Phase 3
-          # instructions (see postgres/README.md).
+          # Dynamic roles are self-rotating by design: every credential
+          # request mints a brand-new random user, auto-revoked at
+          # default_ttl and hard-capped at max_ttl. No separate job needed.
           roles:
             - name: app-ro
               db_name: pocdb
@@ -239,3 +219,20 @@ spec:
                 GRANT ALL PRIVILEGES ON DATABASE pocdb TO "vlt_setup_{{name}}";
               default_ttl: "1h"
               max_ttl: "24h"
+          # The one account Vault doesn't create itself: the CNPG-generated
+          # postgres superuser. A static role takes over rotating its
+          # password in place on a schedule (rotation_statements below) and
+          # serves the current value via database/static-creds/<name> -
+          # postgres/config/base/external-secret.yaml pulls it into the
+          # postgres-superuser Secret, which CNPG then applies to the live
+          # role automatically. Needs `vault` granted membership in
+          # `postgres` to be allowed to alter a superuser's password (see
+          # cluster.yaml's postInitApplicationSQL).
+          static_roles:
+            - name: postgres-superuser
+              db_name: pocdb
+              username: postgres
+              rotation_statements: |
+                ALTER ROLE "postgres" WITH PASSWORD '{{password}}';
+              rotation_schedule: "0 3 * * 0"
+              rotation_window: "1h"

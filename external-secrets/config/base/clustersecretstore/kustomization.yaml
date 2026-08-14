@@ -3,3 +3,4 @@ kind: Kustomization
 
 resources:
   - clustersecretstore.yaml
+  - clustersecretstore-database.yaml
