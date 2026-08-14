@@ -47,7 +47,12 @@ metadata:
   namespace: postgres
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    # BeforeHookCreation (not just HookSucceeded): Job.spec.template is
+    # immutable, so if a Job with this name already exists from a prior
+    # sync attempt (e.g. one that failed, or is being retried), ArgoCD must
+    # delete it before creating the new one rather than trying to patch it
+    # in place - otherwise the apply fails with "field is immutable".
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 0
   template:
