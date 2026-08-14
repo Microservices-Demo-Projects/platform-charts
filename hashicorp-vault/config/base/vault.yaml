@@ -141,7 +141,7 @@ spec:
           }
           # postgres/config/base/external-secret.yaml pulls the current
           # superuser password from here (Vault owns and rotates it - see
-          # the static_roles comment below).
+          # the static-roles comment below).
           path "database/static-creds/postgres-superuser" {
             capabilities = ["read"]
           }
@@ -228,7 +228,7 @@ spec:
           # role automatically. Needs `vault` granted membership in
           # `postgres` to be allowed to alter a superuser's password (see
           # cluster.yaml's postInitApplicationSQL).
-          static_roles:
+          static-roles:
             - name: postgres-superuser
               db_name: pocdb
               username: postgres
