@@ -151,6 +151,16 @@ spec:
           path "database/creds/*" {
             capabilities = ["read", "list"]
           }
+          # postgres/config/base/pushsecret.yaml pushes the CNPG-generated
+          # superuser password here (inverts the old circular boot
+          # dependency) - needs create/update, unlike the read-only rule
+          # above.
+          path "kv/data/db/postgres-root" {
+            capabilities = ["create", "update", "read"]
+          }
+          path "kv/metadata/db/postgres-root" {
+            capabilities = ["create", "update", "read", "delete"]
+          }
 
     auth:
       - type: kubernetes
