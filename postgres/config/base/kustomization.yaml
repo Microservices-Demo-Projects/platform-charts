@@ -5,4 +5,3 @@ resources:
   - certificate-server.yaml
   - certificate-client-ca.yaml
   - cluster.yaml
-  - external-secret.yaml

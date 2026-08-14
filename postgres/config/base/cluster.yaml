@@ -20,14 +20,15 @@ spec:
   storage:
     size: 5Gi
 
-  # No superuserSecret override: CNPG auto-generates and manages its own
-  # `postgres-superuser` (<cluster-name>-superuser) Secret (basic-auth type,
-  # username/password keys). Vault's postgres-superuser static role
-  # (hashicorp-vault/config/base/vault.yaml) rotates this password directly
-  # in the database on a schedule; external-secret.yaml pulls the current
-  # value back into this Secret, and CNPG's reconciler picks up the change
-  # and keeps its own connections in sync.
-  enableSuperuserAccess: true
+  # Off by default (CNPG's own recommendation - the operator manages the
+  # cluster through its own internal mechanism and doesn't need this).
+  # Superuser login is break-glass only: flip to true, commit, push, let
+  # ArgoCD sync - CNPG generates a fresh password into the auto-created
+  # `postgres-superuser` Secret and enables login with it. Flip back to
+  # false and sync again to disable login once done. Each toggle is a git
+  # commit, so there's an audit trail of every time superuser access was
+  # opened.
+  enableSuperuserAccess: false
 
   certificates:
     serverCASecret: postgres-server-tls
@@ -90,12 +91,6 @@ spec:
         # -- Allows vault to grant these roles to the dynamic users it creates.
         - GRANT app_ro TO vault WITH ADMIN OPTION;
         - GRANT app_rw TO vault WITH ADMIN OPTION;
-        # -- PG16+ requires a CREATEROLE-only role to itself be a member of a
-        # -- superuser role before it can alter that role's password; this
-        # -- grants vault exactly that, without INHERIT so it never gains
-        # -- postgres's actual query privileges. Backs the postgres-superuser
-        # -- static role in hashicorp-vault/config/base/vault.yaml.
-        - GRANT postgres TO vault WITH ADMIN OPTION, INHERIT FALSE;
 
   postgresql:
     pg_hba:

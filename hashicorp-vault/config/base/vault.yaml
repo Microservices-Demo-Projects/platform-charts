@@ -139,12 +139,6 @@ spec:
           path "database/creds/*" {
             capabilities = ["read", "list"]
           }
-          # postgres/config/base/external-secret.yaml pulls the current
-          # superuser password from here (Vault owns and rotates it - see
-          # the static-roles comment below).
-          path "database/static-creds/postgres-superuser" {
-            capabilities = ["read"]
-          }
 
     auth:
       - type: kubernetes
@@ -177,7 +171,7 @@ spec:
           config:
             - name: pocdb
               plugin_name: postgresql-database-plugin
-              allowed_roles: ["app-ro", "app-rw", "app-setup", "postgres-superuser"]
+              allowed_roles: ["app-ro", "app-rw", "app-setup"]
               # postgres/config/base/cluster.yaml's pg_hba requires mTLS-only
               # auth for `vault` (no password fallback), so this connects
               # with the same cert-manager client cert the operator mounts
@@ -219,20 +213,12 @@ spec:
                 GRANT ALL PRIVILEGES ON DATABASE pocdb TO "vlt_setup_{{name}}";
               default_ttl: "1h"
               max_ttl: "24h"
-          # The one account Vault doesn't create itself: the CNPG-generated
-          # postgres superuser. A static role takes over rotating its
-          # password in place on a schedule (rotation_statements below) and
-          # serves the current value via database/static-creds/<name> -
-          # postgres/config/base/external-secret.yaml pulls it into the
-          # postgres-superuser Secret, which CNPG then applies to the live
-          # role automatically. Needs `vault` granted membership in
-          # `postgres` to be allowed to alter a superuser's password (see
-          # cluster.yaml's postInitApplicationSQL).
-          static-roles:
-            - name: postgres-superuser
-              db_name: pocdb
-              username: postgres
-              rotation_statements: |
-                ALTER ROLE "postgres" WITH PASSWORD '{{password}}';
-              rotation_schedule: "0 3 * * 0"
-              rotation_window: "1h"
+          # The postgres superuser itself is deliberately NOT managed here.
+          # PostgreSQL only lets a role with the actual SUPERUSER attribute
+          # alter another superuser's password - membership grants aren't
+          # enough - so giving Vault that access would mean granting `vault`
+          # SUPERUSER, which is a bigger blast radius than a password
+          # rotation job warrants. Superuser access is handled instead as a
+          # manual, audited break-glass toggle (see cluster.yaml's
+          # enableSuperuserAccess); Vault's job stays scoped to the
+          # non-superuser app roles above.

@@ -1,7 +1,7 @@
-# The CNPG Cluster CR (3-instance HA), an ExternalSecret pulling the
-# Vault-rotated superuser password, and a PostSync smoke test that requests a
-# live database/creds/app-ro lease from Vault - the first point anything
-# actually exercises Vault's database secrets engine end-to-end.
+# The CNPG Cluster CR (3-instance HA, superuser access off by default - see
+# cluster.yaml) and a PostSync smoke test that requests a live
+# database/creds/app-ro lease from Vault - the first point anything actually
+# exercises Vault's database secrets engine end-to-end.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

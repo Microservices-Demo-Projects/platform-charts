@@ -14,11 +14,11 @@ Two independent deployment mechanisms for PostgreSQL, kept side by side:
 
 CloudNativePG is a CNCF project, licensed Apache-2.0.
 
-## The postgres-root-password flow is now PUSH, not PULL
+## Superuser access is break-glass only, not Vault-managed
 
 The old manual path had an `ExternalSecret` *pull* the root password from Vault (`kv/db/postgres-root`) before Postgres could even start -- a circular boot-order dependency, since Postgres can't come up without a password that depends on Vault, and the whole point of Postgres+Vault integration is Vault reading *from* Postgres.
 
-The GitOps path breaks that cycle: CNPG generates and owns its own superuser credential (`postgres-superuser` secret, auto-created because `enableSuperuserAccess: true` and no `superuserSecret` is set), and an External Secrets Operator `PushSecret` (`config/base/pushsecret.yaml`) *pushes* that password to Vault at `kv/db/postgres-root` instead. Postgres never waits on Vault to boot.
+The GitOps path avoids that cycle a different way: `enableSuperuserAccess` defaults to `false` (CNPG's own recommendation -- the operator manages the cluster through its own internal mechanism and never needs this). Superuser login is a manual, audited break-glass toggle: flip it to `true` in `config/base/cluster.yaml`, commit, push, let ArgoCD sync -- CNPG generates a fresh password into the auto-created `postgres-superuser` Secret and enables login with it -- then flip back to `false` when done. It is deliberately *not* rotated automatically by Vault: PostgreSQL only lets a role with the actual `SUPERUSER` attribute alter another superuser's password (membership grants aren't enough), and granting Vault's service role `SUPERUSER` just to automate a rarely-used credential's rotation would be a much bigger blast radius than the convenience is worth. Vault's database secrets engine stays scoped to non-superuser roles (`app_ro`/`app_rw`/`app-setup`), which it manages dynamically without ever needing elevated privileges.
 
 ## The pg_hba bug fix
 
@@ -31,7 +31,7 @@ postgres/
   manual/    Bitnami-chart-based manual install path (unchanged)
   chart/     Wrapper Helm chart installing the CNPG operator (wave 30)
   values/    Environment-specific values for chart/
-  config/    CNPG Cluster CR + TLS certificates + PushSecret (wave 60)
+  config/    CNPG Cluster CR + TLS certificates (wave 60)
   tests/     ArgoCD PostSync smoke test
 ```
 
