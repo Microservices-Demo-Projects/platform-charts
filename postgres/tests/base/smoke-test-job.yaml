@@ -11,6 +11,35 @@ metadata:
   name: postgres-smoke-test
   namespace: postgres
 ---
+# The job needs the operator-generated Vault root token to call `vault read
+# database/creds/app-ro` (same problem/fix as external-secrets' smoke test:
+# there's no VAULT_TOKEN env var or service-account auth wired up for this
+# ad-hoc CLI use, so it's fetched from the vault-unseal-keys Secret instead).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: postgres-smoke-test-vault-token
+  namespace: vault
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["vault-unseal-keys"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: postgres-smoke-test-vault-token
+  namespace: vault
+subjects:
+  - kind: ServiceAccount
+    name: postgres-smoke-test
+    namespace: postgres
+roleRef:
+  kind: Role
+  name: postgres-smoke-test-vault-token
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -27,6 +56,22 @@ spec:
     spec:
       serviceAccountName: postgres-smoke-test
       restartPolicy: Never
+      # Fetches the Vault root token into a shared emptyDir before the main
+      # container runs - kubectl isn't present in the hashicorp/vault image,
+      # and secretKeyRef can't reach across namespaces (the token Secret
+      # lives in vault, this Job runs in postgres).
+      initContainers:
+        - name: fetch-vault-token
+          image: docker.io/alpine/k8s:1.34.9
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              kubectl get secret vault-unseal-keys -n vault -o jsonpath='{.data.vault-root}' | base64 -d > /shared/vault-token
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
       containers:
         - name: smoke-test
           image: hashicorp/vault:1.21
@@ -35,18 +80,14 @@ spec:
               value: https://vault.vault.svc.cluster.local:8200
             - name: VAULT_SKIP_VERIFY
               value: "true"
-            - name: VAULT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: vault-root-token
-                  key: token
-                  optional: true
           command:
             - /bin/sh
             - -c
             - |
               set -e
               apk add --no-cache postgresql-client >/dev/null
+
+              export VAULT_TOKEN=$(cat /shared/vault-token)
 
               echo "Requesting a live dynamic lease from database/creds/app-ro ..."
               vault read -format=json database/creds/app-ro > /tmp/creds.json
@@ -64,7 +105,7 @@ spec:
 
               echo "Connecting to postgres-rw.postgres.svc.cluster.local as $DB_USER and running SELECT 1 ..."
               if ! PGPASSWORD="$DB_PASS" psql \
-                  "host=postgres-rw.postgres.svc.cluster.local port=5432 dbname=pocdb user=$DB_USER sslmode=verify-full sslrootcert=/vault/userconfig/vault-tls/ca.crt" \
+                  "host=postgres-rw.postgres.svc.cluster.local port=5432 dbname=pocdb user=$DB_USER sslmode=verify-full sslrootcert=/postgres-ca/ca.crt" \
                   -v ON_ERROR_STOP=1 -c "SELECT 1;"; then
                 echo "psql connectivity check failed; leaving lease $LEASE_ID and job for debugging."
                 exit 1
@@ -75,10 +116,18 @@ spec:
 
               echo "Smoke test passed."
           volumeMounts:
-            - name: vault-tls
-              mountPath: /vault/userconfig/vault-tls
+            - name: shared
+              mountPath: /shared
+            # postgres-server-tls (config/base/certificate.yaml, issued by
+            # demo-ca) carries the CA bundle needed to verify the Postgres
+            # server cert with sslmode=verify-full - vault-tls is a different
+            # cert in a different namespace and isn't relevant here.
+            - name: postgres-ca
+              mountPath: /postgres-ca
               readOnly: true
       volumes:
-        - name: vault-tls
+        - name: shared
+          emptyDir: {}
+        - name: postgres-ca
           secret:
-            secretName: vault-tls
+            secretName: postgres-server-tls
