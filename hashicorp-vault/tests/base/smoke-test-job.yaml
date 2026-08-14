@@ -57,6 +57,12 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2
+  # This one matters most: the pod mounts vault-tls and reads vault-unseal-keys,
+  # both created during Vault's own first boot. Until they exist the kubelet
+  # retries the mount forever and no container ever runs, so without a deadline
+  # the hook would sit Running and syncPolicy.retry - which only fires on a sync
+  # that terminates as Failed - would never get a chance.
+  activeDeadlineSeconds: 900
   template:
     metadata:
       name: vault-smoke-test

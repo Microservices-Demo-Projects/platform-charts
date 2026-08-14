@@ -65,10 +65,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["create"]
-  # list/watch (not just get) so `kubectl wait` can observe vault-0 going Ready.
+  # `kubectl exec` reads the pod before attaching, so it needs `get` too.
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get"]
@@ -101,6 +101,11 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2
+  # Without a deadline a pod that can never start (unschedulable, or mounting a
+  # Secret that doesn't exist) leaves the hook Running forever, and ArgoCD's
+  # syncPolicy.retry only fires on a sync that terminates as Failed. Every hook
+  # Job in this repo sets one so a stall becomes a failure ArgoCD can retry.
+  activeDeadlineSeconds: 900
   template:
     metadata:
       name: external-secrets-smoke-test
@@ -149,13 +154,8 @@ spec:
 
               kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-              # Everything below execs into vault-0, which fails outright if
-              # the pod isn't running yet. `kubectl wait` errors immediately
-              # rather than waiting when the pod doesn't exist yet, so wait for
-              # existence first, then readiness.
-              retry kubectl get pod "$VAULT_POD" -n "$VAULT_NS"
-              kubectl wait --for=condition=Ready "pod/$VAULT_POD" \
-                -n "$VAULT_NS" --timeout=300s
+              # No waiting for Vault here: this app's PreSync gate already proved
+              # Vault has elected a leader, so vault-0 is up and answering.
 
               # The vault-0 container has no VAULT_TOKEN env var set, so fetch
               # the operator-generated root token to authenticate the CLI. The

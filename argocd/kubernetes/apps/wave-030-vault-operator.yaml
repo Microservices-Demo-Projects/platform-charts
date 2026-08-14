@@ -1,6 +1,6 @@
 # The bank-vaults vault-operator controller only. The Vault CR it reconciles
-# is deployed separately by vault-config.yaml at sync-wave 40, after this
-# operator (and its CRDs) exist.
+# is deployed separately by wave-040-vault.yaml, after this operator (and its
+# CRDs) exist.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

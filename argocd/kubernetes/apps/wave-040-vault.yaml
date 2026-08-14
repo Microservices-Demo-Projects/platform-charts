@@ -1,13 +1,14 @@
-# The Vault CR itself (raft HA, auto-init/unseal, kv-v2 + database secrets
-# engines, kubernetes auth) plus a PostSync smoke test, and the custom
-# argocd-cm health check for vault.banzaicloud.com/Vault (ArgoCD has no
-# built-in health check for this CRD, so without this the Application would
-# report Healthy the instant the CR is created, before Vault is actually
-# initialized/unsealed - which would let wave 50/60 start too early).
+# The Vault server itself: its TLS certificate and the Vault CR (raft HA,
+# auto-init/unseal, kv-v2 + database secrets engines, kubernetes auth), plus a
+# PreSync gate that waits for its prerequisites and a PostSync smoke test.
+#
+# The vault-operator that reconciles this CR comes up at wave 30. The custom
+# health check that stops this app reporting Healthy before Vault is unsealed
+# lives in wave-000-argocd-health-checks.yaml.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: vault-config
+  name: vault
   namespace: argocd
   # Cascades deletion to this Application's own resources, so removing the
   # parent platform-root (which deletes this Application) also tears down what

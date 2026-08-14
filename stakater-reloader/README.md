@@ -1,8 +1,46 @@
-# Stakater Reloader
+# Reloader
 
-Wrapper around the official [`stakater/reloader`](https://github.com/stakater/Reloader) chart. Reloader watches ConfigMaps and Secrets and triggers rolling restarts of workloads that reference them when their contents change.
+When a Secret or ConfigMap changes, the pods using it don't notice — they keep
+running with the old values. Reloader watches for those changes and restarts the
+affected pods for you.
 
-- **Manual installation**: see [manual/README.md](manual/README.md).
-- **GitOps (ArgoCD)**: this component is deployed at **sync wave 30** as a standalone controller. It has no downstream `config/` stage to gate — it is installed once and runs continuously in the background reloading workloads across the cluster.
+That matters here because Vault rotates database passwords. Without Reloader you'd
+have to restart apps by hand every time a password changed.
 
-See `chart/` for the Helm chart (with OpenShift-default `values.yaml`) and `values/kubernetes.yaml` for the standard-Kubernetes override values (disables OpenShift mode, runs 2 HA replicas with leader election, and adds a PodDisruptionBudget).
+## What's here
+
+```text
+chart/    Helm chart for Reloader   (wave 30)
+values/   kubernetes.yaml - 2 replicas with leader election
+manual/   Install by hand instead - see manual/README.md
+```
+
+There's no `config/` stage — Reloader is installed once and just runs.
+
+## Install
+
+Nothing to do — ArgoCD handles it. See the [ArgoCD guide](../argocd/README.md).
+
+## Verify
+
+```bash
+kubectl get pods -n stakater-reloader
+```
+
+## Using it
+
+Add an annotation to any Deployment you want restarted automatically:
+
+```yaml
+metadata:
+  annotations:
+    reloader.stakater.com/auto: "true"     # watch everything this pod mounts
+```
+
+Or watch one specific Secret:
+
+```yaml
+    secret.reloader.stakater.com/reload: "my-db-credentials"
+```
+
+That's the whole feature.

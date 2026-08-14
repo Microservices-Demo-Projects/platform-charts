@@ -1,22 +1,91 @@
 # HashiCorp Vault
 
-There are two ways to run Vault in this repo:
+Stores the platform's secrets, and hands out **PostgreSQL passwords that expire on
+their own** — every app that asks for database credentials gets a brand-new user,
+automatically deleted an hour later.
 
-- **[`manual/`](manual/README.md)** - the official [`hashicorp/vault`](https://artifacthub.io/packages/helm/hashicorp/vault) Helm chart, run and unsealed by hand. Requires `vault operator init` once, `vault operator unseal` three times, and re-running the unseal step every time the pod restarts. Good for learning how Vault's init/seal/unseal model actually works.
-- **GitOps path (`chart/` + `config/`)** - the community-maintained [bank-vaults](https://bank-vaults.dev) `vault-operator`, which manages a `Vault` custom resource and handles init, auto-unseal, and Vault configuration (policies, auth methods, secrets engines) declaratively. Nobody runs `vault operator init`/`unseal` on this path, including after restarts.
+The important part: **Vault initialises and unseals itself.** No `vault operator init`,
+no typing in three unseal keys, and it stays unsealed across pod restarts.
 
-## Architecture choice
+## What's here
 
-Vault itself is [BUSL-1.1](https://github.com/hashicorp/vault/blob/main/LICENSE) licensed - free to use for this demo/POC, and still the de-facto standard secrets manager. But the *official* HashiCorp Helm chart only runs Vault server pods; it has no declarative init/unseal/policy automation, which is why the manual path requires the hand-run steps above.
+```text
+chart/    The vault-operator (installs the operator only)   (wave 30)
+config/   The Vault server itself, as a Vault resource      (wave 40)
+tests/    Prereq gate, then a smoke test that writes and reads a secret
+manual/   Install by hand instead - see manual/README.md
+```
 
-[bank-vaults](https://github.com/bank-vaults/vault-operator) (Apache-2.0, community-maintained - **not** a HashiCorp project) is the most widely-adopted way to close that gap: its `vault-operator` watches a `Vault` CR and drives init, unseal (storing the root token and unseal keys in a Kubernetes Secret, and automatically re-unsealing after every restart), and Vault configuration (policies, the `kubernetes` auth method and roles, secrets engines) without any manual steps. That's what the GitOps path here uses.
+Two waves because the operator has to exist before it can be given a `Vault`
+resource to act on.
 
-## GitOps path layout
+## Install
 
-- `chart/` - wrapper Helm chart around the bank-vaults `vault-operator` chart (`oci://ghcr.io/bank-vaults/helm-charts/vault-operator`). Deployed at **sync-wave 30**. This only installs the operator Deployment and its CRDs - it does not run Vault itself.
-- `config/base/` - the `Vault` custom resource (3-node Raft/integrated-storage quorum) plus its TLS `Certificate`, ServiceAccount, and RBAC. Deployed at **sync-wave 40**, after the operator exists. This is where Vault's policies, `kubernetes` auth role, and secrets engines (`kv` and `database`) are declared, via `spec.externalConfig`.
-- `config/kubernetes/` - pass-through Kustomize overlay of `config/base` for standard Kubernetes.
-- `values/kubernetes.yaml` - runs the operator with 2 replicas on standard Kubernetes.
-- `tests/base/` - a PostSync smoke-test Job that writes/reads/deletes a throwaway KV secret using the operator-generated root token, proving Vault came up unsealed and reachable with no manual intervention.
+Nothing to do — ArgoCD handles it. See the [ArgoCD guide](../argocd/README.md).
 
-The `database` secrets engine's connection to Postgres is configured with `verify_connection: false` and a placeholder service name, since the postgres component doesn't exist yet when Vault first syncs; it gets exercised for real once postgres (and its `vault` DB user) exists. See `config/base/vault.yaml` for the exact `TODO` markers.
+Vault takes the longest of any component (3 pods, plus init and unseal), so give it
+a few minutes.
+
+## Verify
+
+```bash
+# 3 vault pods, all Running
+kubectl get pods -n vault
+
+# Has Vault elected a leader? A name here means it's initialised and unsealed.
+kubectl get vault vault -n vault -o jsonpath='{.status.leader}'
+```
+
+## Getting the root token
+
+The operator generated it at startup and put it in a Secret:
+
+```bash
+kubectl get secret vault-unseal-keys -n vault \
+  -o jsonpath='{.data.vault-root}' | base64 -d
+```
+
+Then open the UI:
+
+```bash
+kubectl port-forward -n vault svc/vault 8200:8200
+# https://localhost:8200  (certificate warning is expected - it's the demo CA)
+```
+
+> **This Secret holds the unseal keys too.** Anyone with read access to it can
+> unseal and read all of Vault. Fine for a demo; in production these belong in a
+> cloud KMS.
+
+## What Vault is configured with
+
+All declared in `config/base/vault.yaml`, applied by the operator:
+
+| | |
+| --- | --- |
+| Storage | Raft, 3 nodes, real HA |
+| `kv` engine | General secrets, at `kv/` |
+| `database` engine | Rotating PostgreSQL credentials |
+| `kubernetes` auth | Lets External Secrets log in as itself, no password |
+
+The database roles (`app-ro`, `app-rw`) mint a fresh PostgreSQL user per request,
+valid 1 hour, then revoked automatically.
+
+## Two things to know
+
+**Vault connects to PostgreSQL with a certificate, not a password.** It uses the same
+cert-manager certificate it serves HTTPS with, so there's no database password to
+store anywhere.
+
+**`verify_connection: false` is deliberate.** Vault comes up at wave 40, before
+PostgreSQL exists at wave 60, so it can't test the connection yet. PostgreSQL's own
+smoke test proves the link works once both are up.
+
+## Why the operator instead of HashiCorp's chart
+
+HashiCorp's official chart only runs Vault server pods — it has no automation for
+init, unseal, or configuration, which is why the `manual/` path needs all those
+hand-run steps. [bank-vaults](https://github.com/bank-vaults/vault-operator)
+(Apache-2.0, community-run — not a HashiCorp project) adds exactly that.
+
+Vault itself is [BUSL-1.1](https://github.com/hashicorp/vault/blob/main/LICENSE)
+licensed: free for a demo like this, but check the terms before production use.

@@ -23,10 +23,6 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "create", "patch", "delete"]
-  # For the `kubectl wait` on the cert-manager webhook pods below.
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch"]
   - apiGroups: ["cert-manager.io"]
     resources: ["certificates"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
@@ -57,6 +53,11 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2
+  # Without a deadline a pod that can never start (unschedulable, or mounting a
+  # Secret that doesn't exist) leaves the hook Running forever, and ArgoCD's
+  # syncPolicy.retry only fires on a sync that terminates as Failed. Every hook
+  # Job in this repo sets one so a stall becomes a failure ArgoCD can retry.
+  activeDeadlineSeconds: 900
   template:
     metadata:
       name: cert-manager-smoke-test
@@ -87,22 +88,9 @@ spec:
                 return 1
               }
 
-              # Creating a Certificate goes through cert-manager's validating
-              # webhook, which returns a hard "connection refused" (a failed
-              # sync, not a retried one) if its pods aren't serving yet.
-              # `kubectl wait` errors out immediately rather than waiting when
-              # nothing matches yet, so wait for existence first, then
-              # readiness. (`get -l` exits 0 on an empty list, hence the -n
-              # test.)
-              webhook_exists() {
-                [ -n "$(kubectl get pod -l app.kubernetes.io/component=webhook \
-                  -n cert-manager -o name 2>/dev/null)" ]
-              }
-              retry webhook_exists
-              kubectl wait --for=condition=Ready pod \
-                -l app.kubernetes.io/component=webhook \
-                -n cert-manager --timeout=300s
-
+              # No waiting for cert-manager itself here: this app's PreSync gate
+              # already proved the webhook admits and demo-ca can issue, which
+              # is why the test can get straight to the point.
               kubectl create namespace test-certs \
                 --dry-run=client -o yaml | kubectl apply -f -
 
@@ -142,8 +130,8 @@ spec:
                   group: cert-manager.io
               EOF
 
-              # Retried as well as waited for: the webhook's pods can be Ready
-              # a moment before its Service endpoints actually accept traffic.
+              # Still retried: the gate's dry-run proves the webhook was serving
+              # a moment ago, not that it still is.
               retry kubectl apply -f /tmp/example-cert.yaml
 
               if kubectl wait --for=condition=Ready certificate/example-cert -n test-certs --timeout=300s; then

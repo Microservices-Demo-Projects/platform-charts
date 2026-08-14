@@ -97,6 +97,12 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2
+  # The pod mounts postgres-server-tls, which only exists once cert-manager has
+  # issued it. Until then the kubelet retries the mount forever and no container
+  # runs, so without a deadline the hook would sit Running and syncPolicy.retry -
+  # which only fires on a sync that terminates as Failed - would never get a
+  # chance. 900s covers the operator bootstrapping all three instances.
+  activeDeadlineSeconds: 900
   template:
     metadata:
       name: postgres-smoke-test

@@ -1,7 +1,9 @@
 # Kafka
 
-Status: planned, not yet implemented.
+**Not built yet.** This is an empty placeholder.
 
-This component will provide Kafka on Kubernetes/OpenShift via the [Strimzi Kafka Operator](https://strimzi.io/) (CNCF project, Apache-2.0 licensed). Once built, it will follow the same layout as the other components in this repo: `manual/` for manual installation steps, `chart/` for the wrapper Helm chart, `values/` for environment value overrides, `config/{base,kubernetes}` for Kustomize manifests, and `tests/{base,kubernetes}` for smoke tests.
+The plan is to run Kafka with the [Strimzi operator](https://strimzi.io/) (CNCF,
+Apache-2.0), laid out like every other component here: `chart/`, `values/`,
+`config/`, `tests/`, `manual/`.
 
-No chart, CRs, or manifests exist yet — this is a placeholder skeleton only.
+Nothing installs from this directory today, and it isn't in the ArgoCD apps.

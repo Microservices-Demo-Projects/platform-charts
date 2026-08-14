@@ -1,0 +1,79 @@
+# Health checks ArgoCD doesn't have out of the box. Both are needed for the sync
+# waves below to actually gate on anything.
+#
+# Wave 0, so they're registered before the resources they assess exist. ArgoCD
+# picks up argocd-cm changes live, no restart needed.
+#
+# Keep every health check in THIS ONE FILE. ArgoCD applies with a single shared
+# field manager, so a second Application declaring a partial argocd-cm would
+# delete the keys this one owns.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    # argocd-cm is ArgoCD's own config, not ours - we only add keys to it. Never
+    # let ArgoCD delete it: the controller reads this ConfigMap on every delete,
+    # so once it's gone `finalizeApplicationDeletion` fails for every app and
+    # nothing can ever be torn down again, including the app that removed it.
+    #   Unable to delete application resources: cannot apply impersonation:
+    #   ... application.sync.impersonation.enabled ... configmap not found
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+data:
+  # ArgoCD dropped this check in 1.8, so by default platform-root thinks every
+  # child is instantly healthy and creates all 10 at once, ignoring the waves.
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for the child app to be Synced and Healthy"
+
+    if obj.status ~= nil then
+      -- A failed sync (e.g. a PostSync smoke test) still leaves sync=Synced and
+      -- health=Healthy behind, so check the operation too.
+      local op = obj.status.operationState
+      if op ~= nil and (op.phase == "Failed" or op.phase == "Error") then
+        hs.status = "Degraded"
+        hs.message = op.message or ("last sync " .. op.phase)
+        return hs
+      end
+
+      if obj.status.health ~= nil and obj.status.sync ~= nil then
+        if obj.status.health.status == "Degraded" then
+          hs.status = "Degraded"
+          hs.message = obj.status.health.message or "child app is Degraded"
+        elseif obj.status.sync.status == "Synced" and obj.status.health.status == "Healthy" then
+          hs.status = "Healthy"
+          hs.message = "child app is Synced and Healthy"
+        end
+      end
+    end
+
+    return hs
+
+  # ArgoCD has no check for a Vault resource, so without this the vault app
+  # reports Healthy the moment the CR is created - before Vault is unsealed - and
+  # wave 50/60 would sync against a Vault that isn't usable yet.
+  # status.leader/conditions confirmed against vault-operator:1.24.0's CRD.
+  resource.customizations.health.vault.banzaicloud.com_Vault: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for the Vault raft cluster to elect a leader"
+    if obj.status ~= nil then
+      for i, condition in ipairs(obj.status.conditions or {}) do
+        if condition.type == "Failed" and condition.status == "True" then
+          hs.status = "Degraded"
+          hs.message = condition.message or condition.error or "Vault reconciliation failed"
+          return hs
+        end
+      end
+      if obj.status.leader ~= nil and obj.status.leader ~= "" then
+        hs.status = "Healthy"
+        hs.message = "Vault raft cluster has a leader: " .. obj.status.leader
+        return hs
+      end
+    end
+    return hs
