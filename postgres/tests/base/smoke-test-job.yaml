@@ -10,16 +10,23 @@ kind: ServiceAccount
 metadata:
   name: postgres-smoke-test
   namespace: postgres
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 ---
 # The job needs the operator-generated Vault root token to call `vault read
 # database/creds/app-ro` (same problem/fix as external-secrets' smoke test:
 # there's no VAULT_TOKEN env var or service-account auth wired up for this
 # ad-hoc CLI use, so it's fetched from the vault-unseal-keys Secret instead).
+# Hook-annotated the same as the Job - it exists only for that one test.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: postgres-smoke-test-vault-token
   namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -31,6 +38,9 @@ kind: RoleBinding
 metadata:
   name: postgres-smoke-test-vault-token
   namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: postgres-smoke-test

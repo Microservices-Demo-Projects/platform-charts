@@ -1,18 +1,25 @@
-# ServiceAccount for the smoke-test Job. RBAC is scoped to `get` on exactly
-# the `vault-unseal-keys` Secret, in case the container image is ever swapped
-# for one that reads it via the Kubernetes API (e.g. `kubectl get secret`)
-# rather than via a native `secretKeyRef` env mount.
+# RBAC for the smoke-test Job below, scoped to `get` on exactly the
+# `vault-unseal-keys` Secret in case the container image is ever swapped for
+# one that reads it via the Kubernetes API instead of a native secretKeyRef
+# mount. Hook-annotated the same as the Job - it exists only for that one
+# test and shouldn't linger once it passes.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: vault-smoke-test
   namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: vault-smoke-test
   namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -24,6 +31,9 @@ kind: RoleBinding
 metadata:
   name: vault-smoke-test
   namespace: vault
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: vault-smoke-test
@@ -44,7 +54,7 @@ metadata:
   namespace: vault
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 0
   template:

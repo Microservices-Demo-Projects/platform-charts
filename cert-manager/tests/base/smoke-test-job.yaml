@@ -1,13 +1,22 @@
+# The smoke test's own RBAC is scoped to PostSync too - it exists only to
+# run the Job below, so it shouldn't linger in the cluster once the test
+# passes.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: cert-manager-smoke-test
   namespace: cert-manager
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: cert-manager-smoke-test
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
@@ -20,6 +29,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: cert-manager-smoke-test
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 subjects:
   - kind: ServiceAccount
     name: cert-manager-smoke-test
@@ -36,7 +48,7 @@ metadata:
   namespace: cert-manager
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 0
   template:
