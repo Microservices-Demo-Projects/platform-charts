@@ -91,6 +91,47 @@ argocd app list
 ```
 
 
+## Grant the App Controller Access to the Platform's Namespaces
+
+OpenShift GitOps' default `argocd-application-controller` ClusterRole is
+intentionally narrow: full write access to a short allowlist of apiGroups
+(`operators.coreos.com`, `rbac.authorization.k8s.io`, `storage.k8s.io`, a few
+`*.openshift.io` groups) plus `namespaces`/`configmaps`/PV(C)s - everything
+else cluster-scoped is read-only. Every namespace this platform deploys
+into (`cert-manager`, `external-secrets`, `vault`, `postgres`,
+`stakater-reloader`) needs to be explicitly registered before the controller
+can write ordinary namespaced resources (Deployments, Services, Certificates,
+the Vault/Cluster/OperatorConfig CRs) into it. Each component's
+`openshift/config/namespace/` already labels its namespace
+`argocd.argoproj.io/managed-by: openshift-gitops` via GitOps - what's missing
+is telling the ArgoCD instance itself that it's allowed to act on that label,
+which only a cluster-admin can do (patching the operand's own CR isn't
+something the GitOps-managed content can safely do for itself):
+
+```bash
+oc patch argocd openshift-gitops -n openshift-gitops --type merge -p '
+spec:
+  namespaceManagement:
+    - name: cert-manager
+      allowManagedBy: true
+    - name: external-secrets
+      allowManagedBy: true
+    - name: vault
+      allowManagedBy: true
+    - name: postgres
+      allowManagedBy: true
+    - name: stakater-reloader
+      allowManagedBy: true
+'
+```
+
+This grants a namespace-scoped `admin` RoleBinding in each, which does **not**
+cover cluster-scoped resources (CRDs, `ClusterIssuer`, `ClusterSecretStore`) -
+those are handled separately by
+`argocd/openshift/apps/wave-005-argocd-extra-rbac.yaml`, a GitOps-managed
+ClusterRole/ClusterRoleBinding (safe to self-apply since
+`rbac.authorization.k8s.io` is already fully permitted).
+
 ## Configure Git Access
 
 **HTTPS (Personal Access Token):**

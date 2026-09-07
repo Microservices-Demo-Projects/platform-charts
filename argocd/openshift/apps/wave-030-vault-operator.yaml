@@ -27,6 +27,9 @@ spec:
       targetRevision: feature/argocd-gitops-bootstrap
       ref: values
       path: hashicorp-vault/openshift
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: feature/argocd-gitops-bootstrap
+      path: hashicorp-vault/openshift/config/namespace
   destination:
     server: https://kubernetes.default.svc
     namespace: vault

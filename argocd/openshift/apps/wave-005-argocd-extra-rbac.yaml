@@ -1,0 +1,68 @@
+# OpenShift GitOps' default argocd-application-controller ClusterRole only
+# grants full write access to a short allowlist of apiGroups (operators.coreos.com,
+# rbac.authorization.k8s.io, storage.k8s.io, a handful of openshift.io groups,
+# plus namespaces/configmaps/PV(C)s) - everything else cluster-scoped is
+# read-only. That's enough for the OLM Subscription/OperatorGroup objects every
+# operator wave applies, but not for the cluster-scoped custom resources and
+# CRDs these components' config/operand waves need to create:
+#   - apiextensions.k8s.io CustomResourceDefinitions - the vault-operator Helm
+#     chart creates its own vaults.vault.banzaicloud.com CRD directly (not via
+#     OLM, which is why cloudnative-pg/cert-manager/external-secrets, all
+#     OLM-installed, don't need this).
+#   - cert-manager.io ClusterIssuers - cluster-scoped, created by
+#     cert-manager/common/config/base.
+#   - external-secrets.io ClusterSecretStores - cluster-scoped, created by
+#     external-secrets/common/config/clustersecretstore.
+# Everything else these components create (Deployments, Services, the Vault/
+# Cluster/OperatorConfig CRs themselves, Certificates) is namespace-scoped and
+# covered instead by the per-namespace admin RoleBinding OpenShift GitOps
+# grants once a namespace is registered in the ArgoCD CR's
+# spec.namespaceManagement and labeled argocd.argoproj.io/managed-by - see
+# ../0-prerequisite-argocd-setup/local-argocd-setup.md.
+#
+# This file is itself just a ClusterRole/ClusterRoleBinding, which the
+# controller can already create today (rbac.authorization.k8s.io is
+# pre-granted "*" verbs) - no chicken-and-egg with applying it via GitOps.
+# sync-wave "5" so it's in place before wave-030 (vault-operator) creates the
+# CRD, and before the wave-040/050/060 config apps create the cluster-scoped
+# CRs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-app-controller-extra
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+rules:
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - "*"
+  - apiGroups:
+      - cert-manager.io
+    resources:
+      - clusterissuers
+    verbs:
+      - "*"
+  - apiGroups:
+      - external-secrets.io
+    resources:
+      - clustersecretstores
+    verbs:
+      - "*"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-app-controller-extra
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-app-controller-extra
+subjects:
+  - kind: ServiceAccount
+    name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops

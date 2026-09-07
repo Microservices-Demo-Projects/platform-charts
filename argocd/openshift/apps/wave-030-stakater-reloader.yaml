@@ -17,10 +17,13 @@ metadata:
     argocd.argoproj.io/sync-wave: "30"
 spec:
   project: platform
-  source:
-    repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-    targetRevision: feature/argocd-gitops-bootstrap
-    path: stakater-reloader/common/chart
+  sources:
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: feature/argocd-gitops-bootstrap
+      path: stakater-reloader/common/chart
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: feature/argocd-gitops-bootstrap
+      path: stakater-reloader/openshift/config/namespace
   destination:
     server: https://kubernetes.default.svc
     namespace: stakater-reloader
