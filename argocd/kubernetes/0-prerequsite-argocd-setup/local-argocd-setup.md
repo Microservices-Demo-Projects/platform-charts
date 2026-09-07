@@ -98,7 +98,7 @@ kubectl create secret generic github-ssh \
   --from-literal=type=git \
   --from-literal=url=git@github.com \
   --from-literal=username=git \
-  --from-file=sshPrivateKey=argocd-key \
+  --from-file=sshPrivateKey=/Users/<username>/.ssh/<private_key_filename> \
   -n argocd
 
 kubectl label secret github-ssh argocd.argoproj.io/secret-type=repository -n argocd

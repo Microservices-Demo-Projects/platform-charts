@@ -1,0 +1,42 @@
+# AppProject scoping every Application in argocd/openshift/apps/ to this repo
+# and an explicit set of namespaces/cluster resources - instead of leaving them
+# in ArgoCD's unrestricted `default` project.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: openshift-gitops
+spec:
+  description: OpenShift landing zone - cert-manager, Vault, External Secrets, CloudNativePG, Reloader
+
+  sourceRepos:
+    - https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: openshift-gitops
+
+  # Cluster-scoped kinds every component's operator/CRD install needs.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: cert-manager.io
+      kind: ClusterIssuer
+    - group: apiregistration.k8s.io
+      kind: APIService
+    - group: external-secrets.io
+      kind: ClusterSecretStore
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
