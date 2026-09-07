@@ -1,37 +1,33 @@
-# ESO controller + its own mTLS client Certificate (no external dependency,
-# so it rides along here). The ClusterSecretStore itself waits for
-# vault's kubernetes-auth role and is deployed separately at wave 50.
+# The Vault server itself: its TLS certificate and the Vault CR (raft HA,
+# auto-init/unseal, kv-v2 + database secrets engines, kubernetes auth), plus a
+# PreSync gate that waits for its prerequisites and a PostSync smoke test.
+# Identical to the Kubernetes wave-040 app - this config has no
+# OpenShift-specific requirements, only how the operator itself got installed
+# (wave 30) differs.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: external-secrets
-  namespace: argocd
+  name: vault
+  namespace: openshift-gitops
   # Cascades deletion to this Application's own resources, so removing the
   # parent platform-root (which deletes this Application) also tears down what
   # it deployed instead of orphaning it.
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "30"
+    argocd.argoproj.io/sync-wave: "40"
 spec:
   project: platform
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/kubernetes/chart
-      helm:
-        valueFiles:
-          - $values/external-secrets/kubernetes/values.yaml
+      path: hashicorp-vault/common/config/base
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      ref: values
-      path: external-secrets/kubernetes
-    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/common/config/certificate
+      path: hashicorp-vault/common/tests/base
   destination:
     server: https://kubernetes.default.svc
-    namespace: external-secrets
+    namespace: vault
   syncPolicy:
     automated:
       prune: true

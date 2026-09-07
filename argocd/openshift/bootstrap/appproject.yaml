@@ -15,6 +15,20 @@ spec:
   destinations:
     - server: https://kubernetes.default.svc
       namespace: openshift-gitops
+    - server: https://kubernetes.default.svc
+      namespace: cert-manager-operator
+    - server: https://kubernetes.default.svc
+      namespace: cert-manager
+    - server: https://kubernetes.default.svc
+      namespace: external-secrets
+    - server: https://kubernetes.default.svc
+      namespace: openshift-operators
+    - server: https://kubernetes.default.svc
+      namespace: postgres
+    - server: https://kubernetes.default.svc
+      namespace: vault
+    - server: https://kubernetes.default.svc
+      namespace: stakater-reloader
 
   # Cluster-scoped kinds every component's operator/CRD install needs.
   clusterResourceWhitelist:

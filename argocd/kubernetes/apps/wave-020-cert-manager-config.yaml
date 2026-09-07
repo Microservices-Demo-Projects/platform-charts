@@ -18,10 +18,10 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: cert-manager/config/kubernetes
+      path: cert-manager/common/config/base
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: cert-manager/tests/base
+      path: cert-manager/common/tests/base
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager

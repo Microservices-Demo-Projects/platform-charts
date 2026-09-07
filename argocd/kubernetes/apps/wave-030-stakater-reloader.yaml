@@ -15,14 +15,14 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: stakater-reloader/chart
+      path: stakater-reloader/common/chart
       helm:
         valueFiles:
-          - $values/stakater-reloader/values/kubernetes.yaml
+          - $values/stakater-reloader/kubernetes/values.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       ref: values
-      path: stakater-reloader/values
+      path: stakater-reloader/kubernetes
   destination:
     server: https://kubernetes.default.svc
     namespace: stakater-reloader

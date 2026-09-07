@@ -19,10 +19,10 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: postgres/config/kubernetes
+      path: postgres/common/config/base
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: postgres/tests/base
+      path: postgres/common/tests/base
   destination:
     server: https://kubernetes.default.svc
     namespace: postgres

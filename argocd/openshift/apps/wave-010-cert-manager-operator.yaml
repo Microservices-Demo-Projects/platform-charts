@@ -1,29 +1,24 @@
-# The ClusterSecretStore, deployed only after vault's kubernetes-auth
-# role for external-secrets exists (wave 40).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: external-secrets-config
-  namespace: argocd
+  name: cert-manager-operator
+  namespace: openshift-gitops
   # Cascades deletion to this Application's own resources, so removing the
   # parent platform-root (which deletes this Application) also tears down what
   # it deployed instead of orphaning it.
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "50"
+    argocd.argoproj.io/sync-wave: "10"
 spec:
   project: platform
-  sources:
-    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/common/config/clustersecretstore
-    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/common/tests/base
+  source:
+    repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+    targetRevision: feature/argocd-gitops-bootstrap
+    path: cert-manager/openshift/config/operator
   destination:
     server: https://kubernetes.default.svc
-    namespace: external-secrets
+    namespace: cert-manager-operator
   syncPolicy:
     automated:
       prune: true

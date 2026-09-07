@@ -1,0 +1,10 @@
+# Required before the operator will deploy anything - it has no default CR of
+# its own. An empty spec takes the operator's own defaults, which is all this
+# needs: the ESO controller pods, RBAC, and CRDs come up the same as the
+# Kubernetes-side Helm chart.
+apiVersion: operator.external-secrets.io/v1alpha1
+kind: OperatorConfig
+metadata:
+  name: cluster
+  namespace: external-secrets
+spec: {}

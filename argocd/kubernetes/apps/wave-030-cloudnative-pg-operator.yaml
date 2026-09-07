@@ -18,14 +18,14 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: postgres/chart
+      path: postgres/kubernetes/chart
       helm:
         valueFiles:
-          - $values/postgres/values/kubernetes.yaml
+          - $values/postgres/kubernetes/values.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       ref: values
-      path: postgres/values
+      path: postgres/kubernetes
   destination:
     server: https://kubernetes.default.svc
     namespace: cnpg-system

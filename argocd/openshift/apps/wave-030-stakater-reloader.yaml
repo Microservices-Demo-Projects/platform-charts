@@ -1,29 +1,29 @@
-# The ClusterSecretStore, deployed only after vault's kubernetes-auth
-# role for external-secrets exists (wave 40).
+# Reloader via its Helm chart - no OLM operator exists for it. Unlike the
+# Kubernetes app, this sources the chart directly with no values override:
+# the chart's own defaults are already OpenShift-shaped (isOpenshift: true,
+# arbitrary SCC-assigned UID, readOnlyRootFilesystem) - see
+# ../../../stakater-reloader/openshift/README.md.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: external-secrets-config
-  namespace: argocd
+  name: stakater-reloader
+  namespace: openshift-gitops
   # Cascades deletion to this Application's own resources, so removing the
   # parent platform-root (which deletes this Application) also tears down what
   # it deployed instead of orphaning it.
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "50"
+    argocd.argoproj.io/sync-wave: "30"
 spec:
   project: platform
-  sources:
-    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/common/config/clustersecretstore
-    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/common/tests/base
+  source:
+    repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+    targetRevision: feature/argocd-gitops-bootstrap
+    path: stakater-reloader/common/chart
   destination:
     server: https://kubernetes.default.svc
-    namespace: external-secrets
+    namespace: stakater-reloader
   syncPolicy:
     automated:
       prune: true

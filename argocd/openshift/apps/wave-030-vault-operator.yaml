@@ -1,11 +1,12 @@
-# ESO controller + its own mTLS client Certificate (no external dependency,
-# so it rides along here). The ClusterSecretStore itself waits for
-# vault's kubernetes-auth role and is deployed separately at wave 50.
+# The bank-vaults vault-operator controller only. The Vault CR it reconciles
+# is deployed separately by wave-040-vault.yaml, after this operator (and its
+# CRDs) exist. No OLM operator exists for Vault, so this is the same Helm
+# chart as Kubernetes, just with OpenShift-specific values.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: external-secrets
-  namespace: argocd
+  name: vault-operator
+  namespace: openshift-gitops
   # Cascades deletion to this Application's own resources, so removing the
   # parent platform-root (which deletes this Application) also tears down what
   # it deployed instead of orphaning it.
@@ -18,20 +19,17 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/kubernetes/chart
+      path: hashicorp-vault/common/chart
       helm:
         valueFiles:
-          - $values/external-secrets/kubernetes/values.yaml
+          - $values/hashicorp-vault/openshift/values.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       ref: values
-      path: external-secrets/kubernetes
-    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
-      targetRevision: feature/argocd-gitops-bootstrap
-      path: external-secrets/common/config/certificate
+      path: hashicorp-vault/openshift
   destination:
     server: https://kubernetes.default.svc
-    namespace: external-secrets
+    namespace: vault
   syncPolicy:
     automated:
       prune: true

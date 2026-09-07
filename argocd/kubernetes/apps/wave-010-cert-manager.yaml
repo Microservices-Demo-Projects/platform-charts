@@ -15,14 +15,14 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: cert-manager/chart
+      path: cert-manager/kubernetes/chart
       helm:
         valueFiles:
-          - $values/cert-manager/values/kubernetes.yaml
+          - $values/cert-manager/kubernetes/values.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       ref: values
-      path: cert-manager/values
+      path: cert-manager/kubernetes
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager

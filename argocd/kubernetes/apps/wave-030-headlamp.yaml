@@ -15,17 +15,17 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: headlamp/chart
+      path: headlamp/kubernetes/chart
       helm:
         valueFiles:
-          - $values/headlamp/values/kubernetes.yaml
+          - $values/headlamp/kubernetes/values.yaml
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       ref: values
-      path: headlamp/values
+      path: headlamp/kubernetes
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: headlamp/config/kubernetes
+      path: headlamp/common/config/base
   destination:
     server: https://kubernetes.default.svc
     namespace: headlamp
