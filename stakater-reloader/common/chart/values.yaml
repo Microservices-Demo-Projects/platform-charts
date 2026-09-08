@@ -1,21 +1,14 @@
 # Default values for stakater-reloader wrapper chart.
 # This chart is a wrapper around the official stakater/reloader chart.
-# 
-# NOTE: This is configured for OpenShift by default
-#       For standard Kubernetes clusters, see README.md for required changes.
+#
+# Only settings truly shared by both platforms belong here - isOpenshift,
+# UID/securityContext and replica count all differ between them, so those
+# live in kubernetes/values.yaml and openshift/values.yaml instead, applied
+# as ArgoCD helm.valueFiles overlays.
 
 stakater-reloader:
   reloader:
-    # Enable OpenShift-specific features
-    # For standard Kubernetes, set this to false
-    isOpenshift: true
+    # Also sets the subchart's containerSecurityContext.readOnlyRootFilesystem
+    # for us (see templates/deployment.yaml) - neither platform overrides
+    # this, so it's the one setting that actually belongs here.
     readOnlyRootFileSystem: true
-  
-  deployment:
-    # OpenShift-specific security context
-    # Let OpenShift SCC assign UID dynamically
-    securityContext:
-      runAsUser: null
-      # runAsUser: 65534 # Default Nobody User Id
-    containerSecurityContext:
-      readOnlyRootFilesystem: true

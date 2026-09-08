@@ -7,18 +7,26 @@ same [Helm chart](https://github.com/stakater/Reloader) as Kubernetes, from
 
 ## What's here
 
-There's no `values.yaml` here, unlike every other OpenShift path in this
-repo. `../common/chart/values.yaml` — the wrapper chart's own defaults — are
-already OpenShift-shaped: `isOpenshift: true`, an arbitrary SCC-assigned UID,
-and `readOnlyRootFilesystem: true`. It's the *Kubernetes* side
-(`../kubernetes/values.yaml`) that overrides those defaults back to
-Kubernetes-appropriate settings — so on OpenShift there's nothing to
-override; the chart is used as-is.
+`../common/chart/values.yaml` — the wrapper chart's own defaults — are
+mostly OpenShift-shaped already: `isOpenshift: true`,
+`readOnlyRootFilesystem: true`. One thing they can't fix from inside the
+chart's own default values file: the vendored `reloader` subchart hardcodes
+`reloader.deployment.securityContext.runAsUser: 65534`, which OpenShift's
+`restricted-v2` SCC rejects (65534 isn't in the namespace's allocated UID
+range) — so pods fail to schedule with `FailedCreate ... must be in the
+ranges: [...]`.
+
+Unsetting a subchart's hardcoded default has to come from a genuine
+user-supplied values overlay, not from the chart's own bundled
+`values.yaml` — Helm's dependency-value merging doesn't treat a `null` set
+in a chart's *own* defaults as "remove the subchart's key," only a
+`-f`/`helm.valueFiles` layer on top does. `values.yaml` here is exactly that
+overlay, wired in via the ArgoCD Application's `helm.valueFiles`.
 
 ## Install
 
-Nothing to do — ArgoCD handles it, sourcing `../common/chart` directly with
-no values file. See the [ArgoCD guide](../../argocd/README.md).
+ArgoCD sources `../common/chart` plus this directory's `values.yaml` as a
+`helm.valueFiles` overlay. See the [ArgoCD guide](../../argocd/README.md).
 
 ## Verify
 

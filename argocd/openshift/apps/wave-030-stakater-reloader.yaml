@@ -1,7 +1,8 @@
-# Reloader via its Helm chart - no OLM operator exists for it. Unlike the
-# Kubernetes app, this sources the chart directly with no values override:
-# the chart's own defaults are already OpenShift-shaped (isOpenshift: true,
-# arbitrary SCC-assigned UID, readOnlyRootFilesystem) - see
+# Reloader via its Helm chart - no OLM operator exists for it. The chart's
+# own defaults are already OpenShift-shaped (isOpenshift: true,
+# readOnlyRootFilesystem) except for one thing the subchart hardcodes
+# (runAsUser: 65534) that OpenShift's SCC rejects - see
+# ../../../stakater-reloader/openshift/values.yaml and
 # ../../../stakater-reloader/openshift/README.md.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -21,6 +22,13 @@ spec:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       path: stakater-reloader/common/chart
+      helm:
+        valueFiles:
+          - $values/stakater-reloader/openshift/values.yaml
+    - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
+      targetRevision: feature/argocd-gitops-bootstrap
+      ref: values
+      path: stakater-reloader/openshift
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       path: stakater-reloader/openshift/config/namespace
