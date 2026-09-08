@@ -1,0 +1,24 @@
+# Same Vault CR and RBAC as Kubernetes (see ../../../common/config/base),
+# plus one OpenShift-only field: platformManagedSecurityContext. Without it
+# the vault-operator sets an explicit fsGroup (and runAsUser) on both the
+# Vault pod and the vault-configurer pod, which restricted-v2 rejects outright
+# (fsGroup: 1000 is not in the namespace's allocated range) - confirmed via:
+#   pods "vault-configurer-..." is forbidden: unable to validate against any
+#   security context constraint: [... restricted-v2: .spec.securityContext.fsGroup:
+#   Invalid value: []int64{1000}: 1000 is not an allowed group ...]
+# Setting this field (CRD: vault.spec.platformManagedSecurityContext, see
+# banzaicloud/vault-operator's VaultSpec doc comment) tells the operator to
+# leave the security context unset on both pods so OpenShift's SCC can assign
+# one dynamically instead - the same shape as stakater-reloader's isOpenshift
+# flag, just for this operator's own CRD instead of a Helm chart's values.
+resources:
+  - ../../../common/config/base
+
+patches:
+  - target:
+      kind: Vault
+      name: vault
+    patch: |-
+      - op: add
+        path: /spec/platformManagedSecurityContext
+        value: true

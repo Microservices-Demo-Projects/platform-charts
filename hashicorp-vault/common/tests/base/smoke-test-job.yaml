@@ -78,7 +78,13 @@ spec:
                 path: ca.crt
       containers:
         - name: smoke-test
-          image: hashicorp/vault:2.0.4
+          # Fully-qualified, not the bare "hashicorp/vault" short name: RHEL
+          # nodes (and CRC) ship a short-name alias
+          # (/etc/containers/registries.conf.d/001-rhel-shortnames.conf)
+          # redirecting it to registry.connect.redhat.com/hashicorp/vault,
+          # whose catalog doesn't carry the 2.0.4 tag - ImagePullBackOff:
+          # "name unknown: Image not found".
+          image: docker.io/hashicorp/vault:2.0.4
           env:
             - name: VAULT_ADDR
               value: "https://vault.vault.svc.cluster.local:8200"

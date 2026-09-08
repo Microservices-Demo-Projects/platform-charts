@@ -1,9 +1,9 @@
 # The Vault server itself: its TLS certificate and the Vault CR (raft HA,
 # auto-init/unseal, kv-v2 + database secrets engines, kubernetes auth), plus a
 # PreSync gate that waits for its prerequisites and a PostSync smoke test.
-# Identical to the Kubernetes wave-040 app - this config has no
-# OpenShift-specific requirements, only how the operator itself got installed
-# (wave 30) differs.
+# Sources hashicorp-vault/openshift/config/base instead of common/config/base
+# directly - same Vault CR plus platformManagedSecurityContext: true, which
+# restricted-v2 requires (see that overlay's kustomization.yaml).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -21,7 +21,7 @@ spec:
   sources:
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: hashicorp-vault/common/config/base
+      path: hashicorp-vault/openshift/config/base
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
       path: hashicorp-vault/common/tests/base

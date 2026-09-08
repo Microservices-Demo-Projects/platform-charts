@@ -62,7 +62,12 @@ spec:
   # path's single-node "standalone" + file storage.
   size: 3
 
-  image: hashicorp/vault:2.0.4
+  # Fully-qualified, not the bare "hashicorp/vault" short name: RHEL nodes
+  # (and CRC) ship a short-name alias
+  # (/etc/containers/registries.conf.d/001-rhel-shortnames.conf) redirecting
+  # it to registry.connect.redhat.com/hashicorp/vault, whose catalog doesn't
+  # carry the 2.0.4 tag - ImagePullBackOff: "name unknown: Image not found".
+  image: docker.io/hashicorp/vault:2.0.4
   # Sidecar image the operator injects to drive init/unseal/config. Falls
   # back to the operator chart's bankVaults.image if left unset; pinned here
   # for reproducibility.

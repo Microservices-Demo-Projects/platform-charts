@@ -10,9 +10,11 @@ values file.
 
 ```text
 ../common/chart/    The vault-operator (installs the operator only)   (wave 30)
-../common/config/   The Vault server itself, as a Vault resource      (wave 40)
 ../common/tests/    Prereq gate, then a smoke test that writes and reads a secret
 values.yaml          OpenShift-specific chart values
+config/base/         The Vault server itself, as a Vault resource      (wave 40)
+                      - wraps ../../common/config/base and adds
+                      platformManagedSecurityContext: true (see Known risk below)
 ```
 
 ## Install
@@ -35,12 +37,21 @@ Getting the root token, what Vault is configured with, and why the operator
 instead of HashiCorp's own chart are all identical to the Kubernetes install
 — see [../kubernetes/README.md](../kubernetes/README.md).
 
-## Known risk: SCC compatibility is unverified
+## SCC compatibility: platformManagedSecurityContext
 
-Neither the vault-operator chart nor the `Vault` CR it reconciles
-(`../common/config/base/vault.yaml`) sets an explicit `securityContext` or
-`runAsUser` anywhere — that's the shape OpenShift's `restricted-v2` SCC
-expects (an arbitrary UID it assigns itself), so this is likely fine. It has
-not been possible to confirm against a real OpenShift/CRC cluster while
-building this. If pods fail to schedule or start, check `oc get events -n
-vault` for an SCC admission denial first.
+Confirmed against a real CRC cluster: without it, the vault-operator sets an
+explicit `fsGroup` (and `runAsUser`) on both the Vault pod and the
+`vault-configurer` pod, which `restricted-v2` rejects outright —
+
+```text
+pods "vault-configurer-..." is forbidden: unable to validate against any
+security context constraint: [... restricted-v2: .spec.securityContext.fsGroup:
+Invalid value: []int64{1000}: 1000 is not an allowed group ...]
+```
+
+`config/base/kustomization.yaml` here patches the Vault CR with
+`spec.platformManagedSecurityContext: true`, which tells the operator to
+leave the security context unset on both pods so OpenShift's SCC assigns one
+dynamically instead — the same idea as stakater-reloader's `isOpenshift`
+flag, just exposed through this operator's own CRD rather than a Helm
+chart's values.
