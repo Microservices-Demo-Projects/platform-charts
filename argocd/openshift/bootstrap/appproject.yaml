@@ -50,6 +50,10 @@ spec:
       kind: APIService
     - group: external-secrets.io
       kind: ClusterSecretStore
+    # hashicorp-vault/openshift/config/scc - restricted-v2 plus the two
+    # capabilities the vault-operator hardcodes onto the Vault container.
+    - group: security.openshift.io
+      kind: SecurityContextConstraints
 
   namespaceResourceWhitelist:
     - group: "*"
