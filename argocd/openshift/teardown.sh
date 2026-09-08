@@ -36,18 +36,6 @@ set -euo pipefail
 NAMESPACE=openshift-gitops
 NAMESPACES="cert-manager-operator cert-manager external-secrets vault postgres stakater-reloader"
 
-echo "==> Checking ArgoCD can still delete things"
-# openshift-gitops-cm carries argocd.argoproj.io/sync-options: Delete=false,Prune=false
-# (see argocd/openshift/apps/wave-000-argocd-health-checks.yaml) specifically so ArgoCD
-# can never remove it itself - but check anyway, since a missing ConfigMap here would
-# make finalizeApplicationDeletion fail for every app, the same footgun the Kubernetes
-# side hit before that annotation existed.
-if ! oc get configmap openshift-gitops-cm -n "$NAMESPACE" >/dev/null 2>&1; then
-  echo "    openshift-gitops-cm is missing - recreating it so deletes can proceed"
-  oc create configmap openshift-gitops-cm -n "$NAMESPACE"
-  oc label configmap openshift-gitops-cm -n "$NAMESPACE" app.kubernetes.io/part-of=argocd
-fi
-
 echo "==> Checking the platform AppProject exists"
 # Every Application references spec.project: platform - if it's gone, no child's
 # finalizer can ever resolve (DeletionError: appproject.argoproj.io "platform" not
@@ -123,6 +111,17 @@ orphaned_crds=$(oc get crd -o name | grep -E \
 if [ -n "$orphaned_crds" ]; then
   echo "$orphaned_crds" | xargs oc delete --ignore-not-found --timeout=120s
 fi
+
+echo "==> Removing the orphaned openshift-gitops-cm ConfigMap"
+# An earlier revision of wave-000-argocd-health-checks.yaml put the health-check
+# Lua in this ConfigMap before we established that nothing reads it (the
+# application-controller runs without --configmap-name, so only argocd-cm
+# counts). Git no longer declares it, but it still carries platform-root's
+# tracking-id *and* the Delete=false,Prune=false sync-options that revision gave
+# it - so ArgoCD wants to prune it, refuses to, and reports platform-root
+# permanently OutOfSync on the next bootstrap. It also can't be caught by the
+# namespace sweep, since openshift-gitops is never deleted. Hence by hand.
+oc delete configmap openshift-gitops-cm -n "$NAMESPACE" --ignore-not-found
 
 echo "==> Deleting the AppProject"
 oc delete -f "$(dirname "$0")/bootstrap/appproject.yaml" --ignore-not-found
