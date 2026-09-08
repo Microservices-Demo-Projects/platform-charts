@@ -81,6 +81,15 @@ spec:
       containers:
         - name: presync-gate
           image: docker.io/alpine/k8s:1.34.9
+          env:
+            # Where the CNPG operator itself lands differs by how it got
+            # installed (wave 30) - the Kubernetes Helm chart's own namespace
+            # and Deployment name, overridden by postgres/openshift/tests for
+            # the OLM-installed operand (openshift-operators/cnpg-controller-manager).
+            - name: CNPG_OPERATOR_NAMESPACE
+              value: cnpg-system
+            - name: CNPG_OPERATOR_DEPLOYMENT
+              value: cloudnative-pg-operator
           command:
             - /bin/sh
             - -c
@@ -115,7 +124,7 @@ spec:
               # The CRD the Cluster is an instance of, and the operator that
               # reconciles it - which also serves the Cluster admission webhook.
               wait_for Established crd/clusters.postgresql.cnpg.io
-              wait_for Available deployment/cloudnative-pg-operator -n cnpg-system
+              wait_for Available "deployment/$CNPG_OPERATOR_DEPLOYMENT" -n "$CNPG_OPERATOR_NAMESPACE"
 
               # The CA that issues both Postgres certificates.
               wait_for Ready clusterissuer/demo-ca

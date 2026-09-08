@@ -20,6 +20,20 @@
 # spec.namespaceManagement and labeled argocd.argoproj.io/managed-by - see
 # ../0-prerequisite-argocd-setup/local-argocd-setup.md.
 #
+# The vault.banzaicloud.com and operator.external-secrets.io rules below are
+# for a different gap: registering a namespace in spec.namespaceManagement
+# (see local-argocd-setup.md) only grants the app controller a Role built
+# from apiGroups OpenShift GitOps already recognises (cert-manager.io,
+# postgresql.cnpg.io, the OpenShift/k8s built-ins) - everything else
+# cluster-scoped-or-not falls back to its wildcard rule's verbs, which are
+# get/list/watch only. Neither Vault nor external-secrets-operator's CRDs are
+# on that list, so patching the Vault or OperatorConfig CR (namespace-scoped,
+# but under an apiGroup the Role doesn't know) is forbidden without an
+# explicit grant here - confirmed via
+#   vaults.vault.banzaicloud.com "vault" is forbidden: ... cannot patch
+#   resource "vaults" in API group "vault.banzaicloud.com" in the namespace
+#   "vault"
+#
 # This file is itself just a ClusterRole/ClusterRoleBinding, which the
 # controller can already create today (rbac.authorization.k8s.io is
 # pre-granted "*" verbs) - no chicken-and-egg with applying it via GitOps.
@@ -49,6 +63,18 @@ rules:
       - external-secrets.io
     resources:
       - clustersecretstores
+    verbs:
+      - "*"
+  - apiGroups:
+      - vault.banzaicloud.com
+    resources:
+      - vaults
+    verbs:
+      - "*"
+  - apiGroups:
+      - operator.external-secrets.io
+    resources:
+      - operatorconfigs
     verbs:
       - "*"
 ---

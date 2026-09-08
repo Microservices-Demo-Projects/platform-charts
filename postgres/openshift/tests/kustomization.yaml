@@ -1,0 +1,18 @@
+# Same PreSync gate as Kubernetes (see ../../common/tests/base), except for
+# where the CNPG operator itself lands: the OLM-installed operand runs as
+# cnpg-controller-manager in the shared openshift-operators namespace, not
+# cloudnative-pg-operator in cnpg-system like the Kubernetes Helm chart.
+resources:
+  - ../../common/tests/base
+
+patches:
+  - target:
+      kind: Job
+      name: postgres-presync-gate
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: openshift-operators
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: cnpg-controller-manager

@@ -1,8 +1,10 @@
 # The CNPG Cluster CR (3-instance HA, superuser access off by default - see
 # cluster.yaml) and a PostSync smoke test that requests a live
-# database/creds/app-ro lease from Vault. Identical to the Kubernetes
-# wave-060 app - this config has no OpenShift-specific requirements, only how
-# the operator itself got installed (wave 30) differs.
+# database/creds/app-ro lease from Vault. The Cluster CR itself is identical
+# to the Kubernetes wave-060 app; the PreSync gate needs its own overlay
+# (postgres/openshift/tests) because the OLM-installed operator (wave 30)
+# lands as a different Deployment name in a different namespace than the
+# Kubernetes Helm chart does.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -26,7 +28,7 @@ spec:
       path: postgres/common/config/base
     - repoURL: https://github.com/Microservices-Demo-Projects/gitops-platform-bootstrap.git
       targetRevision: feature/argocd-gitops-bootstrap
-      path: postgres/common/tests/base
+      path: postgres/openshift/tests
   destination:
     server: https://kubernetes.default.svc
     namespace: postgres
