@@ -13,6 +13,19 @@
 #     cert-manager/common/config/base.
 #   - external-secrets.io ClusterSecretStores - cluster-scoped, created by
 #     external-secrets/common/config/clustersecretstore.
+#   - admissionregistration.k8s.io ValidatingWebhookConfigurations - the
+#     external-secrets Helm chart ships two (externalsecret-validate,
+#     secretstore-validate). The retired OLM path never needed this because OLM
+#     created them itself; installing from the chart does not:
+#       validatingwebhookconfigurations.admissionregistration.k8s.io
+#       "externalsecret-validate" is forbidden: ... cannot patch resource
+#       "validatingwebhookconfigurations" ... at the cluster scope
+#     Mutating configurations are granted alongside it - nothing creates one
+#     today, but any chart-installed webhook component would need the pair, and
+#     splitting them just invites the same failure a second time.
+#   - security.openshift.io SecurityContextConstraints - hashicorp-vault/
+#     openshift/config/scc creates one (restricted-v2 plus the two capabilities
+#     the vault-operator hardcodes onto the Vault container).
 # Everything else these components create (Deployments, Services, the Vault/
 # Cluster/OperatorConfig CRs themselves, Certificates) is namespace-scoped and
 # covered instead by the per-namespace admin RoleBinding OpenShift GitOps
@@ -63,6 +76,19 @@ rules:
       - external-secrets.io
     resources:
       - clustersecretstores
+    verbs:
+      - "*"
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - validatingwebhookconfigurations
+      - mutatingwebhookconfigurations
+    verbs:
+      - "*"
+  - apiGroups:
+      - security.openshift.io
+    resources:
+      - securitycontextconstraints
     verbs:
       - "*"
   - apiGroups:
