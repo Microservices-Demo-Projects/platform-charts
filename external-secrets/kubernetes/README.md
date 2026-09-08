@@ -8,9 +8,9 @@ client, no token, no Vault-specific code. External Secrets does the talking.
 ## What's here
 
 ```text
-chart/       The ESO controller (Helm chart)                    (wave 30)
 values.yaml  Kubernetes-specific chart values
 
+../common/chart/                        The ESO controller (Helm chart)  (wave 30)
 ../common/config/certificate/           ESO's mTLS certificate           (wave 30)
 ../common/config/clustersecretstore/    The ClusterSecretStore - the link to Vault  (wave 50)
 ../common/tests/                        Prereq gate, then a smoke test that pulls a real secret from Vault
